@@ -1,0 +1,72 @@
+# Enable the rewrite engine
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    
+    # Set the base directory
+    RewriteBase /Silco/
+    
+    # Security Headers
+    <IfModule mod_headers.c>
+        Header always set X-Content-Type-Options "nosniff"
+        Header always set X-Frame-Options "SAMEORIGIN"
+        Header always set X-XSS-Protection "1; mode=block"
+        Header always set Referrer-Policy "strict-origin-when-cross-origin"
+        
+        # Add CORS headers for API endpoints
+        <FilesMatch "\.(php)$">
+            Header set Access-Control-Allow-Origin "*"
+            Header set Access-Control-Allow-Methods "GET, POST, OPTIONS"
+            Header set Access-Control-Allow-Headers "Content-Type, Authorization, X-Requested-With"
+        </FilesMatch>
+    </IfModule>
+    
+    # Allow direct access to existing files and directories
+    RewriteCond %{REQUEST_FILENAME} -f [OR]
+    RewriteCond %{REQUEST_FILENAME} -d [OR]
+    RewriteCond %{REQUEST_URI} ^/(assets|backend)/
+    RewriteRule ^ - [L]
+    
+    # Handle Front Controller
+    RewriteRule ^(.*)$ index.php?url=$1 [QSA,L]
+    
+    # Handle Authorization Header
+    RewriteCond %{HTTP:Authorization} .
+    RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
+</IfModule>
+
+# Disable directory listing
+Options -Indexes -MultiViews +FollowSymLinks
+
+# Prevent access to sensitive files
+<FilesMatch "^\.|composer\.json|composer\.lock|package\.json|package-lock\.json|webpack\.config\.js|gulpfile\.js|readme\.md|CHANGELOG\.md\.gitignore|.env">
+    Order allow,deny
+    Deny from all
+</FilesMatch>
+
+# Enable compression
+<IfModule mod_deflate.c>
+    AddOutputFilterByType DEFLATE text/plain
+    AddOutputFilterByType DEFLATE text/html
+    AddOutputFilterByType DEFLATE text/xml
+    AddOutputFilterByType DEFLATE text/css
+    AddOutputFilterByType DEFLATE application/xml
+    AddOutputFilterByType DEFLATE application/xhtml+xml
+    AddOutputFilterByType DEFLATE application/rss+xml
+    AddOutputFilterByType DEFLATE application/javascript
+    AddOutputFilterByType DEFLATE application/x-javascript
+</IfModule>
+
+# Set default character set
+AddDefaultCharset UTF-8
+
+# PHP settings
+<IfModule mod_php7.c>
+    php_flag display_errors Off
+    php_flag log_errors On
+    php_value error_log /var/log/php_errors.log
+    php_value max_execution_time 300
+    php_value max_input_time 300
+    php_value memory_limit 256M
+    php_value post_max_size 64M
+    php_value upload_max_filesize 64M
+</IfModule>

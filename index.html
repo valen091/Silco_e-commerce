@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Silco - Tu tienda en línea</title>
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Bootstrap Icons -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="assets/css/style.css">
+</head>
+<body>
+    <!-- Navbar -->
+    <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
+        <div class="container">
+            <a class="navbar-brand" href="/Silco">Silco</a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav me-auto">
+                    <li class="nav-item">
+                        <a class="nav-link active" href="/Silco">Inicio</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/Silco/categorias.html">Categorías</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/Silco/ofertas.html">Ofertas</a>
+                    </li>
+                </ul>
+                <form class="d-flex me-3" action="/Silco/buscar.html" method="GET">
+                    <input class="form-control me-2" type="search" name="q" placeholder="Buscar productos..." aria-label="Buscar">
+                    <button class="btn btn-light" type="submit">Buscar</button>
+                </form>
+                <ul class="navbar-nav">
+                    <li class="nav-item">
+                        <a class="nav-link" href="/Silco/login.html">Iniciar sesión</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/Silco/registro.html">Registrarse</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/Silco/carrito.html">
+                            <i class="bi bi-cart"></i> Carrito
+                            <span class="badge bg-danger rounded-pill" id="cart-count">0</span>
+                        </a>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container my-4">
+        <!-- Hero Section -->
+        <div class="hero mb-5">
+            <div class="container text-center">
+                <h1 class="display-4 fw-bold mb-3">Bienvenido a Silco</h1>
+                <p class="lead mb-4">Descubre las mejores ofertas en productos de calidad</p>
+                <a href="#ofertas" class="btn btn-primary btn-lg px-4 me-2">Ver ofertas</a>
+                <a href="#categorias" class="btn btn-outline-light btn-lg px-4">Explorar categorías</a>
+            </div>
+        </div>
+
+        <!-- Featured Products -->
+        <section class="mb-5">
+            <h2 class="section-title">Productos Destacados</h2>
+            <div class="row" id="featured-products">
+                <!-- Products will be loaded via JavaScript -->
+                <div class="col-12 text-center my-5">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden">Cargando...</span>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Categories Section -->
+        <section id="categorias" class="mb-5">
+            <h2 class="section-title">Categorías</h2>
+            <div class="row g-4" id="categories-container">
+                <!-- Categories will be loaded via JavaScript -->
+                <div class="col-12 text-center my-5">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden">Cargando categorías...</span>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Special Offers -->
+        <section id="ofertas" class="mb-5">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <h2 class="section-title mb-0">Ofertas Especiales</h2>
+                <a href="/Silco/ofertas.html" class="btn btn-outline-primary btn-sm">Ver todas las ofertas</a>
+            </div>
+            <div class="row" id="sale-products">
+                <!-- Sale products will be loaded via JavaScript -->
+                <div class="col-12 text-center my-5">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden">Cargando ofertas...</span>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Features Section -->
+        <section class="bg-light py-5 mb-5 rounded-3">
+            <div class="container">
+                <div class="row g-4">
+                    <div class="col-md-4 text-center">
+                        <div class="p-4 bg-white rounded shadow-sm">
+                            <i class="bi bi-truck fs-1 text-primary mb-3"></i>
+                            <h5>Envío Rápido</h5>
+                            <p class="mb-0">Entregas rápidas a todo el país</p>
+                        </div>
+                    </div>
+                    <div class="col-md-4 text-center">
+                        <div class="p-4 bg-white rounded shadow-sm">
+                            <i class="bi bi-shield-check fs-1 text-primary mb-3"></i>
+                            <h5>Pago Seguro</h5>
+                            <p class="mb-0">Múltiples métodos de pago</p>
+                        </div>
+                    </div>
+                    <div class="col-md-4 text-center">
+                        <div class="p-4 bg-white rounded shadow-sm">
+                            <i class="bi bi-headset fs-1 text-primary mb-3"></i>
+                            <h5>Soporte 24/7</h5>
+                            <p class="mb-0">Estamos aquí para ayudarte</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </div>
+
+    <!-- Footer -->
+    <footer class="bg-dark text-white py-4">
+        <div class="container">
+            <div class="row">
+                <div class="col-md-4">
+                    <h5>Silco</h5>
+                    <p>Tu tienda en línea de confianza para encontrar los mejores productos al mejor precio.</p>
+                </div>
+                <div class="col-md-4">
+                    <h5>Enlaces Rápidos</h5>
+                    <ul class="list-unstyled">
+                        <li><a href="/Silco/contacto.html" class="text-white-50">Contacto</a></li>
+                        <li><a href="/Silco/sobre-nosotros.html" class="text-white-50">Sobre Nosotros</a></li>
+                        <li><a href="/Silco/terminos.html" class="text-white-50">Términos y Condiciones</a></li>
+                        <li><a href="/Silco/privacidad.html" class="text-white-50">Política de Privacidad</a></li>
+                    </ul>
+                </div>
+                <div class="col-md-4">
+                    <h5>Contacto</h5>
+                    <ul class="list-unstyled">
+                        <li><i class="bi bi-envelope"></i> contacto@silco.com</li>
+                        <li><i class="bi bi-telephone"></i> +1 234 567 890</li>
+                        <li><i class="bi bi-geo-alt"></i> Ciudad, País</li>
+                    </ul>
+                    <div class="mt-3">
+                        <a href="#" class="text-white me-2"><i class="bi bi-facebook fs-4"></i></a>
+                        <a href="#" class="text-white me-2"><i class="bi bi-instagram fs-4"></i></a>
+                        <a href="#" class="text-white me-2"><i class="bi bi-twitter fs-4"></i></a>
+                        <a href="#" class="text-white"><i class="bi bi-whatsapp fs-4"></i></a>
+                    </div>
+                </div>
+            </div>
+            <hr>
+            <div class="text-center">
+                <p class="mb-0">&copy; 2023 Silco. Todos los derechos reservados.</p>
+            </div>
+        </div>
+    </footer>
+
+    <!-- Bootstrap JS Bundle with Popper -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <!-- jQuery -->
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <!-- Custom JS -->
+    <script src="assets/js/main.js"></script>
+    <script>
+        // Load products and categories
+        document.addEventListener('DOMContentLoaded', function() {
+            // Simulate loading products from an API
+            setTimeout(() => {
+                // This would be an actual API call in a real application
+                const featuredProducts = [
+                    {
+                        id: 1,
+                        nombre: 'Producto Destacado 1',
+                        descripcion: 'Descripción del producto destacado 1',
+                        precio: 99.99,
+                        precio_oferta: 79.99,
+                        categoria_nombre: 'Categoría 1',
+                        imagen_principal: 'https://via.placeholder.com/300x200?text=Producto+1'
+                    },
+                    // Add more sample products as needed
+                ];
+
+                const categories = [
+                    { id: 1, nombre: 'Electrónica' },
+                    { id: 2, nombre: 'Ropa' },
+                    { id: 3, nombre: 'Hogar' },
+                    { id: 4, nombre: 'Deportes' },
+                    { id: 5, nombre: 'Juguetes' },
+                    { id: 6, nombre: 'Belleza' }
+                ];
+
+                // Render products
+                renderProducts(featuredProducts, 'featured-products');
+                renderCategories(categories);
+                
+                // For demo purposes, use the same products for the sale section
+                renderProducts([...featuredProducts].slice(0, 4), 'sale-products');
+                
+            }, 1000);
+
+            function renderProducts(products, containerId) {
+                const container = document.getElementById(containerId);
+                if (!container) return;
+
+                if (products.length === 0) {
+                    container.innerHTML = '<div class="col-12 text-center"><p>No hay productos disponibles.</p></div>';
+                    return;
+                }
+
+                container.innerHTML = products.map(product => `
+                    <div class="col-md-3 col-6 mb-4">
+                        <div class="card h-100">
+                            ${product.precio_oferta ? `
+                                <span class="badge bg-danger badge-offer">
+                                    -${Math.round(((product.precio - product.precio_oferta) / product.precio) * 100)}%
+                                </span>
+                            ` : ''}
+                            <button class="btn btn-link favorite-btn position-absolute top-0 start-0 p-2" data-id="${product.id}" data-bs-toggle="tooltip" title="Añadir a favoritos">
+                                <i class="bi bi-heart fs-5"></i>
+                            </button>
+                            <img src="${product.imagen_principal || 'assets/img/placeholder.jpg'}" class="card-img-top" alt="${product.nombre}">
+                            <div class="card-body">
+                                <span class="badge bg-primary mb-2">${product.categoria_nombre || 'Sin categoría'}</span>
+                                <h5 class="card-title">${product.nombre}</h5>
+                                <p class="card-text text-truncate">${product.descripcion || ''}</p>
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <div>
+                                        <span class="price">$${product.precio_oferta ? product.precio_oferta.toFixed(2) : product.precio.toFixed(2)}</span>
+                                        ${product.precio_oferta ? `
+                                            <span class="old-price">$${product.precio.toFixed(2)}</span>
+                                        ` : ''}
+                                    </div>
+                                    <button class="btn btn-sm btn-outline-primary add-to-cart" data-id="${product.id}">
+                                        <i class="bi bi-cart-plus"></i>
+                                    </button>
+                                </div>
+                            </div>
+                            <a href="/Silco/producto.html?id=${product.id}" class="stretched-link"></a>
+                        </div>
+                    </div>
+                `).join('');
+
+                // Re-initialize tooltips for the new elements
+                const tooltipTriggerList = [].slice.call(container.querySelectorAll('[data-bs-toggle="tooltip"]'));
+                tooltipTriggerList.map(tooltipTriggerEl => new bootstrap.Tooltip(tooltipTriggerEl));
+            }
+
+            function renderCategories(categories) {
+                const container = document.getElementById('categories-container');
+                if (!container) return;
+
+                if (categories.length === 0) {
+                    container.innerHTML = '<div class="col-12 text-center"><p>No hay categorías disponibles.</p></div>';
+                    return;
+                }
+
+                container.innerHTML = categories.map(category => `
+                    <div class="col-md-2 col-4">
+                        <a href="/Silco/categoria.html?id=${category.id}" class="text-decoration-none text-dark">
+                            <div class="card h-100 text-center p-3">
+                                <i class="bi bi-tag fs-1 mb-2"></i>
+                                <h6 class="mb-0">${category.nombre}</h6>
+                            </div>
+                        </a>
+                    </div>
+                `).join('');
+            }
+        });
+    </script>
+</body>
+</html>

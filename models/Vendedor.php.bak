@@ -1,0 +1,427 @@
+<?php
+require_once __DIR__ . '/../config/database.php';
+require_once __DIR__ . '/../helpers/UploadHelper.php';
+
+class Vendedor {
+    private $db;
+    private $table = 'perfiles_vendedor';
+
+    public function __construct() {
+        $this->db = new Database();
+    }
+
+    /**
+     * Get seller profile by user ID
+     */
+    public function obtenerPerfil($usuario_id) {
+        $conn = $this->db->connect();
+        $query = "SELECT pv.*, u.nombre, u.apellido, u.email 
+                 FROM {$this->table} pv
+                 JOIN usuarios u ON pv.usuario_id = u.id
+                 WHERE pv.usuario_id = ?";
+        
+        $stmt = $conn->prepare($query);
+        $stmt->execute([$usuario_id]);
+        
+        return $stmt->fetch(PDO::FETCH_ASSOC);
+    }
+
+    /**
+     * Create or update seller profile
+     */
+    public function guardarPerfil($datos) {
+        $conn = $this->db->connect();
+        
+        // Check if profile exists
+        $perfil = $this->obtenerPerfil($datos['usuario_id']);
+        
+        if ($perfil) {
+            // Update existing profile
+            $query = "UPDATE {$this->table} SET 
+                     nombre_tienda = ?, 
+                     rut_documento = ?,
+                     email_empresa = ?,
+                     descripcion_tienda = ?,
+                     telefono_contacto = ?,
+                     direccion_tienda = ?,
+                     ciudad_tienda = ?,
+                     pais_tienda = ?,
+                     redes_sociales = ?
+                     WHERE usuario_id = ?";
+            
+            $stmt = $conn->prepare($query);
+            return $stmt->execute([
+                $datos['nombre_tienda'],
+                $datos['rut_documento'],
+                $datos['email_empresa'],
+                $datos['descripcion_tienda'],
+                $datos['telefono_contacto'],
+                $datos['direccion_tienda'],
+                $datos['ciudad_tienda'],
+                $datos['pais_tienda'],
+                json_encode($datos['redes_sociales'] ?? []),
+                $datos['usuario_id']
+            ]);
+        } else {
+            // Create new profile
+            $query = "INSERT INTO {$this->table} 
+                     (usuario_id, nombre_tienda, rut_documento, email_empresa, 
+                     descripcion_tienda, telefono_contacto, direccion_tienda, 
+                     ciudad_tienda, pais_tienda, redes_sociales) 
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+            
+            $stmt = $conn->prepare($query);
+            return $stmt->execute([
+                $datos['usuario_id'],
+                $datos['nombre_tienda'],
+                $datos['rut_documento'],
+                $datos['email_empresa'],
+                $datos['descripcion_tienda'],
+                $datos['telefono_contacto'],
+                $datos['direccion_tienda'],
+                $datos['ciudad_tienda'],
+                $datos['pais_tienda'],
+                json_encode($datos['redes_sociales'] ?? [])
+            ]);
+        }
+    }
+
+    /**
+     * Update seller profile picture
+     */
+    public function actualizarFotoPerfil($usuario_id, $foto_path) {
+        $conn = $this->db->connect();
+        $query = "UPDATE {$this->table} SET foto_perfil = ? WHERE usuario_id = ?";
+        $stmt = $conn->prepare($query);
+        return $stmt->execute([$foto_path, $usuario_id]);
+    }
+
+    /**
+     * Get seller products
+     */
+    public function obtenerProductos($vendedor_id, $filtros = []) {
+        $conn = $this->db->connect();
+        
+        $where = "WHERE vendedor_id = ?";
+        $params = [$vendedor_id];
+        
+        // Apply filters
+        if (!empty($filtros['categoria_id'])) {
+            $where .= " AND categoria_id = ?";
+            $params[] = $filtros['categoria_id'];
+        }
+        
+        if (!empty($filtros['estado_stock'])) {
+            switch ($filtros['estado_stock']) {
+                case 'disponible':
+                    $where .= " AND stock > umbral_stock";
+                    break;
+                case 'ultimo':
+                    $where .= " AND stock = 1";
+                    break;
+                case 'agotado':
+                    $where .= " AND stock = 0";
+                    break;
+                case 'bajo_stock':
+                    $where .= " AND stock > 0 AND stock <= umbral_stock";
+                    break;
+            }
+        }
+        
+        if (!empty($filtros['busqueda'])) {
+            $where .= " AND (nombre LIKE ? OR descripcion LIKE ?)";
+            $search_term = "%{$filtros['busqueda']}%";
+            $params[] = $search_term;
+            $params[] = $search_term;
+        }
+        
+        // Order by
+        $order_by = "ORDER BY " . ($filtros['orden'] ?? 'fecha_publicacion DESC');
+        
+        // Pagination
+        $limit = '';
+        if (isset($filtros['por_pagina']) && isset($filtros['pagina'])) {
+            $offset = ($filtros['pagina'] - 1) * $filtros['por_pagina'];
+            $limit = "LIMIT {$offset}, {$filtros['por_pagina']}";
+        }
+        
+        $query = "SELECT p.*, c.nombre as categoria_nombre, 
+                 (SELECT imagen_url FROM imagenes_producto WHERE producto_id = p.id ORDER BY orden LIMIT 1) as imagen_principal
+                 FROM productos p
+                 LEFT JOIN categorias c ON p.categoria_id = c.id
+                 {$where}
+                 {$order_by}
+                 {$limit}";
+        
+        $stmt = $conn->prepare($query);
+        $stmt->execute($params);
+        
+        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+    }
+
+    /**
+     * Get seller orders
+     */
+    public function obtenerPedidos($vendedor_id, $filtros = []) {
+        $conn = $this->db->connect();
+        
+        $where = "WHERE p.vendedor_id = ?";
+        $params = [$vendedor_id];
+        
+        // Apply filters
+        if (!empty($filtros['estado'])) {
+            $where .= " AND p.estado = ?";
+            $params[] = $filtros['estado'];
+        }
+        
+        if (!empty($filtros['fecha_desde'])) {
+            $where .= " AND DATE(p.fecha_creacion) >= ?";
+            $params[] = $filtros['fecha_desde'];
+        }
+        
+        if (!empty($filtros['fecha_hasta'])) {
+            $where .= " AND DATE(p.fecha_creacion) <= ?";
+            $params[] = $filtros['fecha_hasta'];
+        }
+        
+        // Order by
+        $order_by = "ORDER BY p.fecha_creacion DESC";
+        
+        // Pagination
+        $limit = '';
+        if (isset($filtros['por_pagina']) && isset($filtros['pagina'])) {
+            $offset = ($filtros['pagina'] - 1) * $filtros['por_pagina'];
+            $limit = "LIMIT {$offset}, {$filtros['por_pagina']}";
+        }
+        
+        $query = "SELECT p.*, 
+                 CONCAT(u.nombre, ' ', u.apellido) as nombre_cliente,
+                 u.email as email_cliente,
+                 (SELECT COUNT(*) FROM items_pedido WHERE pedido_id = p.id) as total_items,
+                 (SELECT SUM(cantidad * precio_unitario) FROM items_pedido WHERE pedido_id = p.id) as total
+                 FROM pedidos p
+                 JOIN usuarios u ON p.usuario_id = u.id
+                 {$where}
+                 {$order_by}
+                 {$limit}";
+        
+        $stmt = $conn->prepare($query);
+        $stmt->execute($params);
+        
+        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+    }
+
+    /**
+     * Get order details
+     */
+    public function obtenerDetallePedido($pedido_id, $vendedor_id = null) {
+        $conn = $this->db->connect();
+        
+        $where = "WHERE ip.pedido_id = ?";
+        $params = [$pedido_id];
+        
+        if ($vendedor_id) {
+            $where .= " AND p.vendedor_id = ?";
+            $params[] = $vendedor_id;
+        }
+        
+        $query = "SELECT ip.*, p.nombre as producto_nombre, p.descripcion as producto_descripcion,
+                 (SELECT imagen_url FROM imagenes_producto WHERE producto_id = p.id ORDER BY orden LIMIT 1) as imagen_producto,
+                 pr.nombre as proveedor_nombre
+                 FROM items_pedido ip
+                 JOIN productos p ON ip.producto_id = p.id
+                 LEFT JOIN proveedores pr ON p.proveedor_id = pr.id
+                 {$where}";
+        
+        $stmt = $conn->prepare($query);
+        $stmt->execute($params);
+        
+        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+    }
+
+    /**
+     * Update order status
+     */
+    public function actualizarEstadoPedido($pedido_id, $nuevo_estado, $comentario = null, $usuario_id = null) {
+        $conn = $this->db->connect();
+        
+        try {
+            $conn->beginTransaction();
+            
+            // Get current status
+            $stmt = $conn->prepare("SELECT estado FROM pedidos WHERE id = ?");
+            $stmt->execute([$pedido_id]);
+            $estado_actual = $stmt->fetchColumn();
+            
+            // Update order status
+            $stmt = $conn->prepare("UPDATE pedidos SET estado = ? WHERE id = ?");
+            $stmt->execute([$nuevo_estado, $pedido_id]);
+            
+            // Log status change
+            $stmt = $conn->prepare("
+                INSERT INTO historial_estados_pedido 
+                (pedido_id, estado_anterior, estado_nuevo, comentario, usuario_id)
+                VALUES (?, ?, ?, ?, ?)");
+            
+            $stmt->execute([
+                $pedido_id,
+                $estado_actual,
+                $nuevo_estado,
+                $comentario,
+                $usuario_id
+            ]);
+            
+            $conn->commit();
+            return true;
+            
+        } catch (Exception $e) {
+            $conn->rollBack();
+            error_log("Error al actualizar estado del pedido: " . $e->getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * Report a product
+     */
+    public function reportarProducto($datos) {
+        $conn = $this->db->connect();
+        
+        $query = "INSERT INTO reportes_productos 
+                 (producto_id, usuario_id, motivo, descripcion)
+                 VALUES (?, ?, ?, ?)";
+        
+        $stmt = $conn->prepare($query);
+        return $stmt->execute([
+            $datos['producto_id'],
+            $datos['usuario_id'],
+            $datos['motivo'],
+            $datos['descripcion'] ?? null
+        ]);
+    }
+
+    /**
+     * Add/remove product from favorites
+     * @param int $usuario_id User ID
+     * @param int $producto_id Product ID
+     * @return string|bool 'added' if added to favorites, 'removed' if removed, false on error
+     */
+    public function toggleFavorito($usuario_id, $producto_id) {
+        $conn = $this->db->connect();
+        
+        try {
+            // Check if already favorited
+            $stmt = $conn->prepare("SELECT id FROM favoritos WHERE usuario_id = ? AND producto_id = ?");
+            $stmt->execute([$usuario_id, $producto_id]);
+            
+            if ($stmt->fetch()) {
+                // Remove from favorites
+                $stmt = $conn->prepare("DELETE FROM favoritos WHERE usuario_id = ? AND producto_id = ?");
+                $result = $stmt->execute([$usuario_id, $producto_id]);
+                return $result ? 'removed' : false;
+            } else {
+                // Add to favorites
+                $stmt = $conn->prepare("INSERT INTO favoritos (usuario_id, producto_id, fecha_agregado) VALUES (?, ?, NOW())");
+                $result = $stmt->execute([$usuario_id, $producto_id]);
+                return $result ? 'added' : false;
+            }
+        } catch (PDOException $e) {
+            error_log("Error en toggleFavorito: " . $e->getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * Get user's favorite products
+     */
+    public function obtenerFavoritos($usuario_id, $pagina = 1, $por_pagina = 10) {
+        $conn = $this->db->connect();
+        
+        $offset = ($pagina - 1) * $por_pagina;
+        
+        $query = "SELECT p.*, 
+                 (SELECT imagen_url FROM imagenes_producto WHERE producto_id = p.id ORDER BY orden LIMIT 1) as imagen_principal,
+                 c.nombre as categoria_nombre
+                 FROM productos p
+                 JOIN favoritos f ON p.id = f.producto_id
+                 LEFT JOIN categorias c ON p.categoria_id = c.id
+                 WHERE f.usuario_id = ?
+                 ORDER BY f.fecha_agregado DESC
+                 LIMIT ? OFFSET ?";
+        
+        $stmt = $conn->prepare($query);
+        $stmt->execute([$usuario_id, $por_pagina, $offset]);
+        
+        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+    }
+
+    /**
+     * Get seller statistics
+     */
+    public function obtenerEstadisticas($vendedor_id) {
+        $conn = $this->db->connect();
+        
+        $stats = [];
+        
+        // Total products
+        $stmt = $conn->prepare("SELECT COUNT(*) FROM productos WHERE vendedor_id = ?");
+        $stmt->execute([$vendedor_id]);
+        $stats['total_productos'] = $stmt->fetchColumn();
+        
+        // Total orders
+        $stmt = $conn->prepare("
+            SELECT COUNT(DISTINCT p.id) 
+            FROM pedidos p
+            JOIN items_pedido ip ON p.id = ip.pedido_id
+            JOIN productos pr ON ip.producto_id = pr.id 
+            WHERE pr.vendedor_id = ?");
+        
+        $stmt->execute([$vendedor_id]);
+        $stats['total_pedidos'] = $stmt->fetchColumn();
+        
+        // Total sales
+        $stmt = $conn->prepare("
+            SELECT COALESCE(SUM(ip.cantidad * ip.precio_unitario), 0)
+            FROM items_pedido ip
+            JOIN productos p ON ip.producto_id = p.id
+            JOIN pedidos ped ON ip.pedido_id = ped.id
+            WHERE p.vendedor_id = ? AND ped.estado != 'cancelado'");
+        
+        $stmt->execute([$vendedor_id]);
+        $stats['ventas_totales'] = $stmt->fetchColumn();
+        
+        // Low stock products
+        $stmt = $conn->prepare("
+            SELECT COUNT(*) 
+            FROM productos 
+            WHERE vendedor_id = ? AND stock > 0 AND stock <= umbral_stock");
+        
+        $stmt->execute([$vendedor_id]);
+        $stats['productos_bajo_stock'] = $stmt->fetchColumn();
+        
+        // Out of stock products
+        $stmt = $conn->prepare("SELECT COUNT(*) FROM productos WHERE vendedor_id = ? AND stock = 0");
+        $stmt->execute([$vendedor_id]);
+        $stats['productos_agotados'] = $stmt->fetchColumn();
+        
+        // Recent orders
+        $stmt = $conn->prepare("
+            SELECT p.id, p.estado, p.fecha_creacion, 
+                   CONCAT(u.nombre, ' ', u.apellido) as nombre_cliente,
+                   (SELECT COUNT(*) FROM items_pedido WHERE pedido_id = p.id) as total_items,
+                   (SELECT SUM(cantidad * precio_unitario) FROM items_pedido WHERE pedido_id = p.id) as total
+            FROM pedidos p
+            JOIN items_pedido ip ON p.id = ip.pedido_id
+            JOIN productos pr ON ip.producto_id = pr.id
+            JOIN usuarios u ON p.usuario_id = u.id
+            WHERE pr.vendedor_id = ?
+            GROUP BY p.id
+            ORDER BY p.fecha_creacion DESC
+            LIMIT 5");
+        
+        $stmt->execute([$vendedor_id]);
+        $stats['ultimos_pedidos'] = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        
+        return $stats;
+    }
+}
