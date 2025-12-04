@@ -30,6 +30,9 @@ $router->post('vendedor/favoritos/toggle/{producto_id}', [VendedorController::cl
 // Product reports
 $router->post('vendedor/productos/reportar', [VendedorController::class, 'reportarProducto']);
 
+// User account routes
+$router->get('mis-pedidos', 'VendedorController@misPedidos');
+
 // Contact routes
 $router->get('contacto', [ContactoController::class, 'index']);
 $router->post('contacto/enviar', [ContactoController::class, 'enviarMensaje']);

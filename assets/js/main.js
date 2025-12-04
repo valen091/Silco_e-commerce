@@ -37,7 +37,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
 // Add product to cart
 function addToCart(productId, quantity = 1) {
-    fetch('backend/cart/add.php', {
+    fetch(window.location.origin + '/backend/cart/add.php', {
         method: 'POST',
         headers: {
             'Content-Type': 'application/x-www-form-urlencoded',
@@ -63,7 +63,7 @@ function addToCart(productId, quantity = 1) {
 
 // Toggle favorite status
 function toggleFavorite(productId, element) {
-    fetch('backend/favorites/toggle.php', {
+    fetch(`${window.location.origin}/backend/favorites/toggle.php`, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/x-www-form-urlencoded',
@@ -94,7 +94,8 @@ function toggleFavorite(productId, element) {
 
 // Update cart count in the UI
 function updateCartCount() {
-    fetch('backend/cart/count.php', {
+    // Use relative path from site root to avoid issues with subdirectories
+    fetch('/Silco/backend/cart/count.php', {
         method: 'GET',
         headers: {
             'Content-Type': 'application/json',
@@ -129,7 +130,7 @@ function updateCartCount() {
 function handleSearch(e) {
     const query = e.target.value.trim();
     if (query.length > 2) {
-        fetch(`backend/search/suggest.php?q=${encodeURIComponent(query)}`)
+        fetch(`${window.location.origin}/backend/search/suggest.php?q=${encodeURIComponent(query)}`)
             .then(handleResponse)
             .then(data => {
                 // Implement search suggestions UI if needed

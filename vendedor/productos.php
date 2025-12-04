@@ -7,8 +7,8 @@ if (!isLoggedIn() || !isVendedor()) {
     exit();
 }
 
-$db = new Database();
-$conn = $db->connect();
+$db = Database::getInstance();
+$conn = $db->getConnection();
 $user_id = $_SESSION['user_id'];
 
 // Manejar eliminación de producto
@@ -481,7 +481,228 @@ try {
             </div>
         </div>
     </div>
+    <!-- Floating Action Button -->
+    <button id="addProductFab" class="btn btn-primary btn-fab" title="Agregar Producto">
+        <i class="fas fa-plus"></i>
+    </button>
+
+    <!-- Sliding Panel -->
+    <div class="sliding-panel" id="addProductPanel">
+        <div class="sliding-panel-header">
+            <h4>Agregar Nuevo Producto</h4>
+            <button type="button" class="btn-close" id="closePanel"></button>
+        </div>
+        <div class="sliding-panel-body" id="productFormContainer">
+            <!-- Form will be loaded here via AJAX -->
+            <div class="text-center py-5">
+                <div class="spinner-border text-primary" role="status">
+                    <span class="visually-hidden">Cargando...</span>
+                </div>
+                <p class="mt-2">Cargando formulario...</p>
+            </div>
+        </div>
+    </div>
+
+    <style>
+        /* Floating Action Button */
+        .btn-fab {
+            position: fixed;
+            bottom: 30px;
+            right: 30px;
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            font-size: 24px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+            z-index: 1000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.3s ease;
+        }
+
+        .btn-fab:hover {
+            transform: scale(1.1);
+            box-shadow: 0 6px 12px rgba(0, 0, 0, 0.3);
+        }
+
+        /* Sliding Panel */
+        .sliding-panel {
+            position: fixed;
+            top: 0;
+            right: -500px;
+            width: 500px;
+            height: 100vh;
+            background: white;
+            box-shadow: -2px 0 10px rgba(0, 0, 0, 0.1);
+            z-index: 1050;
+            transition: right 0.3s ease-in-out;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .sliding-panel.open {
+            right: 0;
+        }
+
+        .sliding-panel-header {
+            padding: 20px;
+            border-bottom: 1px solid #eee;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background-color: #f8f9fa;
+        }
+
+        .sliding-panel-body {
+            flex: 1;
+            overflow-y: auto;
+            padding: 20px;
+        }
+
+        /* Overlay */
+        .panel-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 1040;
+            opacity: 0;
+            visibility: hidden;
+            transition: opacity 0.3s ease-in-out;
+        }
+
+        .panel-overlay.visible {
+            opacity: 1;
+            visibility: visible;
+        }
+
+        @media (max-width: 576px) {
+            .sliding-panel {
+                width: 100%;
+                right: -100%;
+            }
+        }
+    </style>
+
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script src="../assets/js/main.js"></script>
+    <script>
+        $(document).ready(function() {
+            const panel = $('#addProductPanel');
+            const overlay = $('<div class="panel-overlay"></div>').appendTo('body');
+            const fab = $('#addProductFab');
+            const closeBtn = $('#closePanel');
+            const formContainer = $('#productFormContainer');
+
+            // Load form via AJAX when panel is opened
+            function loadProductForm() {
+                formContainer.html(`
+                    <div class="text-center py-5">
+                        <div class="spinner-border text-primary" role="status">
+                            <span class="visually-hidden">Cargando...</span>
+                        </div>
+                        <p class="mt-2">Cargando formulario...</p>
+                    </div>
+                `);
+
+                $.get('producto-form.php', function(data) {
+                    formContainer.html(data);
+                    // Reinitialize any necessary plugins or scripts
+                    if (typeof initFormValidation === 'function') {
+                        initFormValidation();
+                    }
+                }).fail(function() {
+                    formContainer.html(`
+                        <div class="alert alert-danger">
+                            Error al cargar el formulario. Por favor, recarga la página o inténtalo de nuevo más tarde.
+                        </div>
+                    `);
+                });
+            }
+
+            // Toggle panel
+            function togglePanel() {
+                panel.toggleClass('open');
+                overlay.toggleClass('visible');
+                
+                if (panel.hasClass('open') && formContainer.find('form').length === 0) {
+                    loadProductForm();
+                }
+            }
+
+            // Event listeners
+            fab.on('click', togglePanel);
+            closeBtn.on('click', togglePanel);
+            overlay.on('click', togglePanel);
+
+            // Close panel when pressing Escape key
+            $(document).on('keydown', function(e) {
+                if (e.key === 'Escape' && panel.hasClass('open')) {
+                    togglePanel();
+                }
+            });
+
+            // Handle form submission
+            $(document).on('submit', '#productoForm', function(e) {
+                e.preventDefault();
+                
+                const formData = new FormData(this);
+                
+                $.ajax({
+                    url: 'nuevo-producto.php',
+                    type: 'POST',
+                    data: formData,
+                    processData: false,
+                    contentType: false,
+                    success: function(response) {
+                        // Show success message
+                        const successMsg = `
+                            <div class="alert alert-success">
+                                <i class="fas fa-check-circle me-2"></i>
+                                Producto creado exitosamente. Redirigiendo...
+                            </div>
+                        `;
+                        formContainer.html(successMsg);
+                        
+                        // Reload the page after a short delay
+                        setTimeout(() => {
+                            window.location.reload();
+                        }, 1500);
+                    },
+                    error: function(xhr) {
+                        let errorMsg = 'Error al guardar el producto. Por favor, inténtalo de nuevo.';
+                        
+                        // Try to parse error response
+                        try {
+                            const response = JSON.parse(xhr.responseText);
+                            if (response.error) {
+                                errorMsg = response.error;
+                            } else if (response.errors) {
+                                errorMsg = '<ul class="mb-0">' + 
+                                    response.errors.map(err => `<li>${err}</li>`).join('') + 
+                                    '</ul>';
+                            }
+                        } catch (e) {
+                            console.error('Error parsing response:', e);
+                        }
+                        
+                        formContainer.prepend(`
+                            <div class="alert alert-danger">
+                                <i class="fas fa-exclamation-triangle me-2"></i>
+                                ${errorMsg}
+                            </div>
+                        `);
+                        
+                        // Scroll to top to show error
+                        formContainer.scrollTop(0);
+                    }
+                });
+            });
+        });
+    </script>
 </body>
 </html>

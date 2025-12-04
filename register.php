@@ -38,8 +38,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         } elseif (strlen($password) < 8) {
             $error = 'La contraseña debe tener al menos 8 caracteres.';
         } else {
-            $db = new Database();
-            $conn = $db->connect();
+            $db = Database::getInstance();
+            $conn = $db->getConnection();
 
             try {
                 // Verificar si el correo ya existe
@@ -75,12 +75,126 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Registro - Silco</title>
     <link rel="stylesheet" href="assets/css/style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        /* Hide search bar on register page */
+        .search-container {
+            display: none !important;
+        }
+        .auth-form {
+            max-width: 500px;
+            margin: 30px auto;
+            padding: 30px;
+            background: #fff;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        .form-group {
+            margin-bottom: 20px;
+        }
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 500;
+            color: #333;
+        }
+        .form-group input[type="text"],
+        .form-group input[type="email"],
+        .form-group input[type="password"],
+        .form-group input[type="tel"],
+        .form-group input[type="number"] {
+            width: 100%;
+            padding: 10px 12px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            font-size: 15px;
+            transition: border-color 0.3s;
+        }
+        .form-group input:focus {
+            border-color: #1a73e8;
+            outline: none;
+            box-shadow: 0 0 0 2px rgba(26, 115, 232, 0.2);
+        }
+        .form-row {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+        .form-row .form-group {
+            flex: 1;
+            margin-bottom: 0;
+        }
+        .checkbox {
+            display: flex;
+            align-items: center;
+            margin: 20px 0;
+        }
+        .checkbox input[type="checkbox"] {
+            margin-right: 10px;
+            width: auto;
+        }
+        .btn-primary {
+            background: #1a73e8;
+            color: white;
+            padding: 12px 20px;
+            border: none;
+            border-radius: 6px;
+            font-size: 16px;
+            font-weight: 500;
+            cursor: pointer;
+            width: 100%;
+            transition: background-color 0.3s;
+        }
+        .btn-primary:hover {
+            background: #1557b0;
+        }
+        .form-actions {
+            text-align: center;
+            margin-top: 25px;
+        }
+        .form-actions a {
+            color: #1a73e8;
+            text-decoration: none;
+            font-weight: 500;
+        }
+        .form-actions a:hover {
+            text-decoration: underline;
+        }
+        .alert {
+            padding: 12px 15px;
+            border-radius: 6px;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+        .alert-danger {
+            background-color: #fde7e9;
+            color: #d32f2f;
+            border: 1px solid #f5c6cb;
+        }
+        .alert-success {
+            background-color: #e8f5e9;
+            color: #2e7d32;
+            border: 1px solid #c8e6c9;
+        }
+        h1 {
+            text-align: center;
+            color: #1a73e8;
+            margin: 30px 0;
+        }
+        .required {
+            color: #d32f2f;
+        }
+    </style>
 </head>
-<body>
-    <?php include 'includes/header.php'; ?>
+<body class="login-page">
+    <?php 
+    // Set a flag to hide search in header
+    $hideSearch = true;
+    include 'includes/header.php'; 
+    ?>
     
     <main class="container">
-        <h1>Registro de Usuario</h1>
+        <h1><i class="fas fa-user-plus" style="color: #1a73e8; margin-right: 10px;"></i>Registro de Usuario</h1>
         
         <?php if ($error): ?>
             <div class="alert alert-danger"><?php echo $error; ?></div>
@@ -94,31 +208,31 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             <input type="hidden" name="csrf_token" value="<?php echo generateCSRFToken(); ?>">
             
             <div class="form-group">
-                <label for="nombre">Nombre *</label>
+                <label for="nombre">Nombre <span class="required">*</span></label>
                 <input type="text" id="nombre" name="nombre" required 
                        value="<?php echo htmlspecialchars($_POST['nombre'] ?? ''); ?>">
             </div>
             
             <div class="form-group">
-                <label for="apellido">Apellido *</label>
+                <label for="apellido">Apellido <span class="required">*</span></label>
                 <input type="text" id="apellido" name="apellido" required
                        value="<?php echo htmlspecialchars($_POST['apellido'] ?? ''); ?>">
             </div>
             
             <div class="form-group">
-                <label for="email">Correo Electrónico *</label>
+                <label for="email">Correo Electrónico <span class="required">*</span></label>
                 <input type="email" id="email" name="email" required
                        value="<?php echo htmlspecialchars($_POST['email'] ?? ''); ?>">
             </div>
             
             <div class="form-group">
-                <label for="password">Contraseña *</label>
+                <label for="password">Contraseña <span class="required">*</span></label>
                 <input type="password" id="password" name="password" required minlength="8">
                 <small>Mínimo 8 caracteres</small>
             </div>
             
             <div class="form-group">
-                <label for="confirm_password">Confirmar Contraseña *</label>
+                <label for="confirm_password">Confirmar Contraseña <span class="required">*</span></label>
                 <input type="password" id="confirm_password" name="confirm_password" required minlength="8">
             </div>
             

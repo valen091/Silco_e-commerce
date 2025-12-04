@@ -1,5 +1,5 @@
 <?php
-class Database {
+class DatabaseConfig {
     private $host;
     private $db_name;
     private $username;

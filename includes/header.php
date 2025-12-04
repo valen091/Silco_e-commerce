@@ -1,32 +1,30 @@
 <?php
-// Set error reporting
+// Start session first
+require_once __DIR__ . '/Session.php';
+$session = Session::getInstance();
+
+// Incluir configuración global
+require_once __DIR__ . '/../config.php';
+
+// Definir la URL base si no está definida
+if (!defined('BASE_URL')) {
+    define('BASE_URL', APP_URL);
+}
+
+// Mostrar errores en desarrollo
 error_reporting(E_ALL);
 ini_set('display_errors', 1);
-
-// Define base URL
-define('BASE_URL', 'http://' . $_SERVER['HTTP_HOST'] . '/Silco');
-
-// Start session if not already started
-if (session_status() === PHP_SESSION_NONE) {
-    session_start([
-        'use_strict_mode' => true,
-        'use_cookies' => 1,
-        'cookie_httponly' => 1,
-        'cookie_samesite' => 'Lax',
-        'cookie_lifetime' => 86400 // 24 hours
-    ]);
-}
 
 // Initialize database connection
 $db = null;
 $categories = [];
 
 try {
-    // Load database configuration
+    // Cargar configuración de la base de datos
     require_once __DIR__ . '/../config/database.php';
     
     // Create database connection
-    $database = new Database();
+    $database = new DatabaseConfig();
     $db = $database->connect();
     
     // Get categories for navigation
@@ -47,14 +45,19 @@ try {
     }
 }
 
-// Helper function to check if user is logged in
-function isLoggedIn() {
-    return isset($_SESSION['user_id']);
-}
-
 // Helper function to check if user is a seller
 function isSeller() {
-    return isset($_SESSION['user_role']) && $_SESSION['user_role'] === 'vendedor';
+    // Check both possible session variables that might indicate a seller
+    $is_seller = isset($_SESSION['es_vendedor']) && $_SESSION['es_vendedor'] == 1;
+    $is_seller = $is_seller || (isset($_SESSION['user_role']) && $_SESSION['user_role'] === 'vendedor');
+    
+    // Debug information
+    if (isset($_SESSION['user_id'])) {
+        error_log('User ID: ' . $_SESSION['user_id'] . ' - Is Seller: ' . ($is_seller ? 'Yes' : 'No'));
+        error_log('Session data: ' . print_r($_SESSION, true));
+    }
+    
+    return $is_seller;
 }
 ?>
 <!DOCTYPE html>
@@ -65,11 +68,11 @@ function isSeller() {
     <title>Silco - Tu tienda en línea</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
-    <link rel="stylesheet" href="assets/css/style.css">
+    <link rel="stylesheet" href="<?= BASE_URL ?>/assets/css/style.css">
     <script>
         // Initialize cart when the page loads
         document.addEventListener('DOMContentLoaded', function() {
-            fetch('backend/cart/init.php', {
+            fetch('<?= BASE_URL ?>/backend/cart/init.php', {
                 method: 'GET',
                 headers: {
                     'Content-Type': 'application/json',
@@ -100,13 +103,13 @@ function isSeller() {
             });
         });
     </script>
-    <script src="assets/js/main.js" defer></script>
+    <script src="<?= BASE_URL ?>/assets/js/main.js" defer></script>
 </head>
 <body>
     <!-- Navbar -->
     <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
         <div class="container">
-            <a class="navbar-brand" href="index.php">Silco</a>
+            <a class="navbar-brand" href="<?php echo APP_URL; ?>/index.php">Silco</a>
             <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
                 <span class="navbar-toggler-icon"></span>
             </button>
@@ -151,6 +154,8 @@ function isSeller() {
                     </li>
                     <?php endif; ?>
                 </ul>
+                <?php if (!isset($hideSearch) || !$hideSearch): ?>
+                <!-- Barra de búsqueda -->
                 <form class="d-flex me-3" action="<?= BASE_URL ?>/buscar.php" method="GET">
                     <div class="input-group">
                         <input class="form-control" type="search" name="q" placeholder="Buscar productos..." aria-label="Buscar" value="<?= isset($_GET['q']) ? htmlspecialchars($_GET['q']) : '' ?>">
@@ -159,6 +164,7 @@ function isSeller() {
                         </button>
                     </div>
                 </form>
+                <?php endif; ?>
                 <ul class="navbar-nav">
                     <?php if (isLoggedIn()): ?>
                         <li class="nav-item dropdown">
@@ -173,18 +179,18 @@ function isSeller() {
                                     </a>
                                 </li>
                                 <?php if (isSeller()): ?>
-                                    <li>
-                                        <a class="dropdown-item" href="<?= BASE_URL ?>/vendedor/panel.php">
-                                            <i class="bi bi-speedometer2 me-2"></i>Panel del vendedor
-                                        </a>
-                                    </li>
-                                <?php else: ?>
-                                    <li>
+                                <li>
+                                    <a class="dropdown-item" href="/Silco/vendedor/panel.php">
+                                        <i class="bi bi-speedometer2 me-2"></i> Panel de Vendedor
+                                    </a>
+                                </li>
+                                <li><hr class="dropdown-divider">
+                                <?php endif; ?>
+                                <li>
                                         <a class="dropdown-item" href="<?= BASE_URL ?>/ser-vendedor.php">
                                             <i class="bi bi-shop me-2"></i>Ser vendedor
                                         </a>
-                                    </li>
-                                <?php endif; ?>
+                                </li>
                                 <li><hr class="dropdown-divider"></li>
                                 <li>
                                     <a class="dropdown-item" href="<?= BASE_URL ?>/mis-pedidos.php">
@@ -214,8 +220,8 @@ function isSeller() {
                         </li>
                     <?php else: ?>
                         <li class="nav-item">
-                            <a class="nav-link" href="<?= BASE_URL ?>/login.php">
-                                <i class="bi bi-box-arrow-in-right me-1"></i>Iniciar sesión
+                            <a class="nav-link" href="<?= BASE_URL ?>/login.php?force_login=1">
+                                <i class="bi bi-box-arrow-in-right" style="color: #1a73e8;"></i> Iniciar sesión
                             </a>
                         </li>
                         <li class="nav-item">
@@ -228,5 +234,41 @@ function isSeller() {
             </div>
         </div>
     </nav>
+
+    <?php if (!isset($hideCartInit) || !$hideCartInit): ?>
+    <script>
+        // Initialize cart when the page loads
+        document.addEventListener('DOMContentLoaded', function() {
+            fetch('<?= BASE_URL ?>/backend/cart/init.php', {
+                method: 'GET',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'Accept': 'application/json'
+                },
+                credentials: 'same-origin'
+            })
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('Network response was not ok');
+                }
+                return response.json();
+            })
+            .then(data => {
+                if (data && data.success) {
+                    const cartCount = data.cart_count || 0;
+                    const cartCountElement = document.getElementById('cart-count');
+                    if (cartCountElement) {
+                        cartCountElement.textContent = cartCount;
+                        cartCountElement.style.display = cartCount > 0 ? 'inline-block' : 'none';
+                    }
+                }
+            })
+            .catch(error => {
+                console.error('Error initializing cart:', error);
+            });
+        });
+    </script>
+    <?php endif; ?>
 
     <div class="container my-4">

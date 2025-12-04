@@ -1,54 +1,65 @@
 <?php
-require_once 'includes/functions.php';
-require_once 'includes/config/database.php';
+// Incluir configuración y clases necesarias
+require_once __DIR__ . '/config.php';
+require_once __DIR__ . '/includes/Session.php';
+require_once __DIR__ . '/includes/functions.php';
 
-// Start session if not already started
-if (session_status() === PHP_SESSION_NONE) {
-    session_start([
-        'use_strict_mode' => true,
-        'use_cookies' => 1,
-        'cookie_httponly' => 1,
-        'cookie_samesite' => 'Lax'
-    ]);
-}
+// Inicializar la sesión
+$session = Session::getInstance();
 
-// Clear remember token from database if user is logged in
-if (isset($_SESSION['user_id'])) {
+// Limpiar token de recordar si existe
+if ($session->isLoggedIn()) {
     try {
-        $db = new PDO("mysql:host=localhost;dbname=silco_db;charset=utf8", 'root', 'silco');
-        $db->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+        $db = Database::getInstance();
+        $conn = $db->getConnection();
         
-        $stmt = $db->prepare("UPDATE usuarios SET remember_token = NULL, token_expires_at = NULL WHERE id = ?");
-        $stmt->execute([$_SESSION['user_id']]);
+        // Limpiar token de recordar en la base de datos
+        $stmt = $conn->prepare("UPDATE usuarios SET remember_token = NULL, token_expires_at = NULL WHERE id = ?");
+        $stmt->execute([$session->get('user_id')]);
     } catch (PDOException $e) {
-        error_log("Error clearing remember token: " . $e->getMessage());
+        error_log("Error al limpiar token de recordar: " . $e->getMessage());
     }
 }
 
-// Clear remember me cookie
-setcookie('remember_token', '', [
-    'expires' => time() - 3600,
-    'path' => '/',
-    'domain' => '',
-    'secure' => true,
-    'httponly' => true,
-    'samesite' => 'Lax'
-]);
+// Destruir la sesión
+$session->destroy();
 
-// Unset all session variables
-$_SESSION = array();
-
-// Delete the session cookie
-if (ini_get("session.use_cookies")) {
-    $params = session_get_cookie_params();
-    setcookie(session_name(), '', time() - 42000,
-        $params["path"], $params["domain"],
-        $params["secure"], $params["httponly"]
-    );
+// Limpiar todas las cookies
+if (isset($_SERVER['HTTP_COOKIE'])) {
+    $cookies = explode(';', $_SERVER['HTTP_COOKIE']);
+    foreach($cookies as $cookie) {
+        $parts = explode('=', $cookie);
+        $name = trim($parts[0]);
+        
+        // Eliminar la cookie estableciendo tiempo de expiración en el pasado
+        setcookie($name, '', time() - 3600, '/');
+        setcookie($name, '', time() - 3600, '/', $_SERVER['HTTP_HOST']);
+        setcookie($name, '', time() - 3600, '/', '.' . $_SERVER['HTTP_HOST']);
+    }
 }
 
-// Destroy the session
-session_destroy();
+// Redirigir a la página de login
+header('Location: login.php');
+exit();
 
-// Redirect to home page
-redirect('index.php');
+// Prevent caching of this page
+header("Cache-Control: no-store, no-cache, must-revalidate, max-age=0");
+header("Cache-Control: post-check=0, pre-check=0", false);
+header("Pragma: no-cache");
+
+// Set a new session just for the success message
+session_start();
+$_SESSION['success'] = 'Has cerrado sesión correctamente.';
+
+// Get base URL dynamically
+$base_url = rtrim(dirname($_SERVER['PHP_SELF']), '/');
+$redirect_url = $base_url . '/login.php';
+
+// Ensure we're not redirecting to a different domain
+if (!preg_match('/^\//', $redirect_url)) {
+    $redirect_url = '/' . $redirect_url;
+}
+
+// Redirect to login page
+header('Location: ' . $redirect_url, true, 302);
+exit();

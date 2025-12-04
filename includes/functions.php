@@ -1,20 +1,10 @@
 <?php
 require_once __DIR__ . '/../config/database.php';
+require_once __DIR__ . '/../helpers/functions.php';
 
-// Función para redirigir
-function redirect($url) {
-    header("Location: $url");
-    exit();
-}
-
-// Verificar si el usuario está autenticado
-function isLoggedIn() {
-    return isset($_SESSION['user_id']);
-}
-
-// Verificar si el usuario es vendedor
-function isVendedor() {
-    return isset($_SESSION['es_vendedor']) && $_SESSION['es_vendedor'] === true;
+// Obtener el ID del usuario actual
+function getCurrentUserId() {
+    return $_SESSION['user_id'] ?? null;
 }
 
 // Obtener información del usuario actual
@@ -23,8 +13,8 @@ function getCurrentUser() {
         return null;
     }
     
-    $db = new Database();
-    $conn = $db->connect();
+    $db = Database::getInstance();
+    $conn = $db->getConnection();
     
     try {
         $stmt = $conn->prepare("SELECT id, nombre, apellido, email, es_vendedor FROM usuarios WHERE id = ?");
@@ -34,11 +24,6 @@ function getCurrentUser() {
         error_log("Error al obtener usuario: " . $e->getMessage());
         return null;
     }
-}
-
-// Sanitizar entrada
-function sanitize($data) {
-    return htmlspecialchars(strip_tags(trim($data)));
 }
 
 // Generar token CSRF

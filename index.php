@@ -1,4 +1,18 @@
 <?php
+// Iniciar la sesión al principio del script
+require_once __DIR__ . '/config.php';
+require_once __DIR__ . '/includes/Session.php';
+
+// Inicializar la sesión
+$session = Session::getInstance();
+
+// Debug: Verificar estado de la sesión
+error_log('Index - Session status: ' . session_status());
+error_log('Index - Session ID: ' . session_id());
+error_log('Index - Session data: ' . print_r($_SESSION, true));
+
+error_log('Index - isLoggedIn: ' . ($session->isLoggedIn() ? 'true' : 'false'));
+
 require_once __DIR__ . '/includes/header.php';
 
 // Get featured products

@@ -1,26 +1,94 @@
 <?php
-require_once '../includes/functions.php';
+// Iniciar la sesión primero
+require_once __DIR__ . '/../config.php';
 
-// Verificar autenticación y rol de vendedor
-if (!isLoggedIn() || !isVendedor()) {
-    header('Location: ../login.php');
+// Debug: Mostrar errores
+ini_set('display_errors', 1);
+error_reporting(E_ALL);
+
+// Incluir el manejador de sesión
+require_once __DIR__ . '/../includes/Session.php';
+
+// Inicializar la sesión
+$session = Session::getInstance();
+
+// Incluir funciones
+require_once __DIR__ . '/../includes/functions.php';
+require_once __DIR__ . '/../includes/Database.php';
+
+// Verificar si el usuario está autenticado
+if (!isLoggedIn()) {
+    $_SESSION['redirect_after_login'] = '/Silco/vendedor/nuevo-producto.php';
+    header('Location: /Silco/login.php');
     exit();
 }
 
-$db = new Database();
-$conn = $db->connect();
+// Verificar si el usuario es vendedor
+if (!isVendedor()) {
+    $_SESSION['error'] = 'No tienes permiso para acceder a esta sección.';
+    header('Location: /Silco/perfil.php');
+    exit();
+}
+
+// Actualizar la actividad de la sesión
+$session->set('last_activity', time());
+
+// Obtener información del usuario
+try {
+    $db = Database::getInstance();
+    $conn = $db->getConnection();
+    $stmt = $conn->prepare("SELECT id, email, es_vendedor FROM usuarios WHERE id = ?");
+    $stmt->execute([$_SESSION['user_id']]);
+    $user = $stmt->fetch(PDO::FETCH_ASSOC);
+    
+    // Debug: Mostrar información de sesión en el log de errores
+    error_log('Acceso a nuevo-producto.php - User ID: ' . $_SESSION['user_id']);
+        
+    // Verificar si el usuario es vendedor en la base de datos
+    if ($user && !$user['es_vendedor']) {
+        error_log('Usuario no es vendedor en la base de datos - User ID: ' . $_SESSION['user_id']);
+        $_SESSION['error'] = 'No tienes permisos de vendedor en el sistema.';
+        header('Location: /Silco/perfil.php');
+        exit();
+    }
+} catch (Exception $e) {
+    error_log('Error al conectar a la base de datos: ' . $e->getMessage());
+    $_SESSION['error'] = 'Error al verificar los permisos. Por favor, intente de nuevo.';
+    header('Location: /Silco/error.php');
+    exit();
+}
+error_log('Session data: ' . print_r($_SESSION, true));
+
+// Verificar autenticación
+if (!isLoggedIn()) {
+    error_log('Usuario no autenticado. Redirigiendo a login.');
+    // Usar ruta relativa para la redirección
+    $currentUrl = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? 'https' : 'http') . "://$_SERVER[HTTP_HOST]$_SERVER[REQUEST_URI]";
+    $_SESSION['redirect_after_login'] = '/Silco' . str_replace($_SERVER['DOCUMENT_ROOT'], '', $_SERVER['SCRIPT_NAME']);
+    header('Location: /Silco/login.php');
+    exit();
+}
+
+// Verificar rol de vendedor
+if (!isVendedor()) {
+    error_log('Usuario no tiene rol de vendedor. ID de usuario: ' . ($_SESSION['user_id'] ?? 'no definido'));
+    $_SESSION['error'] = 'No tienes permiso para acceder a esta sección.';
+    header('Location: panel.php');
+    exit();
+}
+
+$db = Database::getInstance();
+$conn = $db->getConnection();
 $user_id = $_SESSION['user_id'];
 
-// Obtener categorías para el formulario
-try {
-    $categorias = $conn->query("SELECT id, nombre FROM categorias ORDER BY nombre")->fetchAll();
-} catch (PDOException $e) {
-    $categorias = [];
-    error_log("Error al obtener categorías: " . $e->getMessage());
-    $_SESSION['error'] = 'Error al cargar las categorías. Por favor, inténtalo de nuevo.';
-    header('Location: productos.php');
-    exit();
-}
+// Categorías fijas para el formulario
+$categorias = [
+    ['id' => 1, 'nombre' => 'Electrodomésticos'],
+    ['id' => 2, 'nombre' => 'Moda'],
+    ['id' => 3, 'nombre' => 'Salud y Belleza'],
+    ['id' => 4, 'nombre' => 'Herramientas'],
+    ['id' => 5, 'nombre' => 'Cosas para el Hogar']
+];
 
 // Procesar el formulario cuando se envía
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -35,11 +103,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $nombre = trim($_POST['nombre'] ?? '');
     $descripcion = trim($_POST['descripcion'] ?? '');
     $categoria_id = (int)($_POST['categoria_id'] ?? 0);
-    $precio = (float)str_replace(',', '.', $_POST['precio'] ?? '0');
-    $precio_oferta = !empty($_POST['precio_oferta']) ? (float)str_replace(',', '.', $_POST['precio_oferta']) : null;
     $stock = (int)($_POST['stock'] ?? 0);
     $condicion = $_POST['condicion'] ?? 'nuevo';
-    $activo = isset($_POST['activo']) ? 1 : 0;
+    $activo = 1; // Por defecto activo
     
     // Validaciones
     $errores = [];
@@ -56,64 +122,47 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $errores[] = 'Debes seleccionar una categoría válida.';
     }
     
-    if ($precio <= 0) {
-        $errores[] = 'El precio debe ser mayor a cero.';
-    }
-    
-    if ($precio_oferta !== null && $precio_oferta >= $precio) {
-        $errores[] = 'El precio de oferta debe ser menor al precio normal.';
-    }
-    
     if ($stock < 0) {
         $errores[] = 'El stock no puede ser negativo.';
     }
     
     // Procesar imágenes
     $imagenes = [];
-    if (isset($_FILES['imagenes']) && !empty($_FILES['imagenes']['name'][0])) {
+    if (isset($_FILES['imagenes']) && is_array($_FILES['imagenes']['name'])) {
         $total_imagenes = count($_FILES['imagenes']['name']);
+        $upload_dir = '../uploads/productos/';
+        
+        // Crear directorio si no existe
+        if (!file_exists($upload_dir)) {
+            mkdir($upload_dir, 0755, true);
+        }
         
         for ($i = 0; $i < $total_imagenes; $i++) {
             if ($_FILES['imagenes']['error'][$i] === UPLOAD_ERR_OK) {
-                $nombre_archivo = $_FILES['imagenes']['name'][$i];
-                $tipo_archivo = $_FILES['imagenes']['type'][$i];
-                $tamano_archivo = $_FILES['imagenes']['size'][$i];
-                $tmp_archivo = $_FILES['imagenes']['tmp_name'][$i];
+                $tmp_name = $_FILES['imagenes']['tmp_name'][$i];
+                $name = basename($_FILES['imagenes']['name'][$i]);
+                $extension = strtolower(pathinfo($name, PATHINFO_EXTENSION));
+                $nuevo_nombre = uniqid('img_') . '.' . $extension;
+                $ruta_destino = $upload_dir . $nuevo_nombre;
                 
                 // Validar tipo de archivo
-                $extension = strtolower(pathinfo($nombre_archivo, PATHINFO_EXTENSION));
-                $extensiones_permitidas = ['jpg', 'jpeg', 'png', 'gif', 'webp'];
-                
-                if (!in_array($extension, $extensiones_permitidas)) {
-                    $errores[] = "El archivo $nombre_archivo no es una imagen válida. Formatos permitidos: " . implode(', ', $extensiones_permitidas);
+                $tipo_valido = ['jpg', 'jpeg', 'png', 'gif', 'webp'];
+                if (!in_array($extension, $tipo_valido)) {
+                    $errores[] = 'El archivo ' . $name . ' no es una imagen válida. Formatos aceptados: ' . implode(', ', $tipo_valido);
                     continue;
                 }
                 
-                // Validar tamaño (máximo 5MB)
-                $tamano_maximo = 5 * 1024 * 1024; // 5MB
-                if ($tamano_archivo > $tamano_maximo) {
-                    $errores[] = "El archivo $nombre_archivo es demasiado grande. Tamaño máximo: 5MB";
+                // Validar tamaño (máx 5MB)
+                if ($_FILES['imagenes']['size'][$i] > 5 * 1024 * 1024) {
+                    $errores[] = 'La imagen ' . $name . ' es demasiado grande. El tamaño máximo permitido es 5MB.';
                     continue;
                 }
                 
-                // Generar nombre único para el archivo
-                $nombre_unico = uniqid('prod_') . '.' . $extension;
-                $ruta_destino = '../assets/img/productos/' . $nombre_unico;
-                
-                // Crear directorio si no existe
-                if (!is_dir('../assets/img/productos/')) {
-                    mkdir('../assets/img/productos/', 0755, true);
-                }
-                
-                // Mover el archivo subido al directorio de destino
-                if (move_uploaded_file($tmp_archivo, $ruta_destino)) {
-                    $imagenes[] = [
-                        'nombre' => $nombre_unico,
-                        'ruta' => $ruta_destino,
-                        'orden' => $i
-                    ];
+                // Mover el archivo
+                if (move_uploaded_file($tmp_name, $ruta_destino)) {
+                    $imagenes[] = str_replace('../', '', $ruta_destino);
                 } else {
-                    $errores[] = "Error al subir el archivo $nombre_archivo. Por favor, inténtalo de nuevo.";
+                    $errores[] = 'Error al subir la imagen ' . $name;
                 }
             }
         }
@@ -129,21 +178,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             // Insertar el producto
             $stmt = $conn->prepare("
                 INSERT INTO productos (
-                    vendedor_id, categoria_id, nombre, descripcion, 
-                    precio, precio_oferta, stock, condicion, activo
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    nombre, descripcion, categoria_id, 
+                    stock, condicion, activo, vendedor_id, fecha_creacion
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, NOW())
             ");
             
             $stmt->execute([
-                $user_id, 
-                $categoria_id, 
                 $nombre, 
                 $descripcion, 
-                $precio, 
-                $precio_oferta, 
+                $categoria_id, 
                 $stock, 
                 $condicion, 
-                $activo
+                $activo, 
+                $user_id
             ]);
             
             $producto_id = $conn->lastInsertId();
@@ -151,16 +198,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             // Guardar las imágenes
             if (!empty($imagenes)) {
                 $stmt = $conn->prepare("
-                    INSERT INTO imagenes_producto (producto_id, imagen_url, orden) 
-                    VALUES (?, ?, ?)
-                
+                    INSERT INTO imagenes_producto (producto_id, imagen_url) 
+                    VALUES (?, ?)
                 ");
                 
-                foreach ($imagenes as $orden => $imagen) {
+                foreach ($imagenes as $imagen) {
                     $stmt->execute([
                         $producto_id,
-                        str_replace('../', '', $imagen['ruta']), // Guardar ruta relativa
-                        $orden
+                        $imagen
                     ]);
                 }
             }
@@ -168,7 +213,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $conn->commit();
             
             $_SESSION['success'] = '¡Producto creado exitosamente!';
-            header('Location: editar-producto.php?id=' . $producto_id);
+            // Redirigir a la lista de productos del vendedor
+            header('Location: ' . dirname($_SERVER['PHP_SELF']) . '/productos.php');
             exit();
             
         } catch (PDOException $e) {
@@ -276,8 +322,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         <?php include '../includes/header.php'; ?>
         
         <div class="dashboard-content">
-            <?php include 'includes/sidebar.php'; ?>
-            
             <div class="dashboard-main">
                 <div class="dashboard-header">
                     <h1>Nuevo Producto</h1>
@@ -344,16 +388,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                         <select class="form-select" id="condicion" name="condicion" required>
                                             <option value="nuevo" <?php echo (isset($_POST['condicion']) && $_POST['condicion'] === 'nuevo') ? 'selected' : ''; ?>>Nuevo</option>
                                             <option value="usado" <?php echo (isset($_POST['condicion']) && $_POST['condicion'] === 'usado') ? 'selected' : ''; ?>>Usado</option>
-                                            <option value="reacondicionado" <?php echo (isset($_POST['condicion']) && $_POST['condicion'] === 'reacondicionado') ? 'selected' : ''; ?>>Reacondicionado</option>
                                         </select>
                                     </div>
                                     
-                                    <div class="form-check form-switch mb-3">
-                                        <input class="form-check-input" type="checkbox" id="activo" name="activo" value="1" 
-                                               <?php echo !isset($_POST['activo']) || $_POST['activo'] ? 'checked' : ''; ?>>
-                                        <label class="form-check-label" for="activo">Producto activo</label>
-                                        <div class="form-text">Los productos inactivos no serán visibles en la tienda.</div>
-                                    </div>
+                                    <input type="hidden" name="activo" value="1">
                                 </div>
                             </div>
                         </div>
@@ -383,53 +421,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     
                     <div class="card mb-4">
                         <div class="card-header">
-                            <h3>Precio y Stock</h3>
+                            <h3>Stock</h3>
                         </div>
                         <div class="card-body">
                             <div class="row">
                                 <div class="col-md-6">
                                     <div class="mb-3">
-                                        <label for="precio" class="form-label">Precio *</label>
-                                        <div class="input-group">
-                                            <span class="input-group-text">$</span>
-                                            <input type="number" class="form-control" id="precio" name="precio" 
-                                                   step="0.01" min="0" required
-                                                   value="<?php echo htmlspecialchars($_POST['precio'] ?? '0'); ?>">
-                                        </div>
-                                    </div>
-                                </div>
-                                
-                                <div class="col-md-6">
-                                    <div class="mb-3">
-                                        <label for="precio_oferta" class="form-label">Precio de oferta (opcional)</label>
-                                        <div class="input-group">
-                                            <span class="input-group-text">$</span>
-                                            <input type="number" class="form-control" id="precio_oferta" 
-                                                   name="precio_oferta" step="0.01" min="0"
-                                                   value="<?php echo htmlspecialchars($_POST['precio_oferta'] ?? ''); ?>">
-                                        </div>
-                                        <div class="form-text">Si se especifica, este será el precio mostrado como oferta.</div>
-                                    </div>
-                                </div>
-                                
-                                <div class="col-md-6">
-                                    <div class="mb-3">
                                         <label for="stock" class="form-label">Cantidad en Stock *</label>
-                                        <input type="number" class="form-control" id="stock" name="stock" 
-                                               min="0" required
-                                               value="<?php echo htmlspecialchars($_POST['stock'] ?? '0'); ?>">
+                                        <input type="number" class="form-control" id="stock" name="stock" required
+                                               min="0" value="<?php echo htmlspecialchars($_POST['stock'] ?? '0'); ?>">
                                     </div>
                                 </div>
                             </div>
                         </div>
                     </div>
                     
-                    <div class="d-flex justify-content-between">
-                        <a href="productos.php" class="btn btn-outline-secondary">
-                            <i class="fas fa-times"></i> Cancelar
+                    <div class="d-grid gap-2 d-md-flex justify-content-md-end">
+                        <a href="productos.php" class="btn btn-outline-secondary me-md-2">
+                            <i class="fas fa-times me-1"></i> Cancelar
                         </a>
                         <button type="submit" class="btn btn-primary">
-                            <i class="fas fa-save"></i> Guardar Producto
+                            <i class="fas fa-save me-1"></i> Guardar Producto
                         </button>
                     </div>
                 </form>
@@ -629,15 +641,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     return false;
                 }
                 
-                // Validar que el precio de oferta sea menor que el precio normal
-                const precio = parseFloat($('#precio').val());
-                const precioOferta = $('#precio_oferta').val() ? parseFloat($('#precio_oferta').val()) : null;
-                
-                if (precioOferta !== null && precioOferta >= precio) {
-                    e.preventDefault();
-                    alert('El precio de oferta debe ser menor al precio normal.');
-                    return false;
-                }
                 
                 return true;
             });
