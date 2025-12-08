@@ -1,21 +1,6 @@
 <?php
 require_once __DIR__ . '/../config/database.php';
-
-// Función para redirigir
-function redirect($url) {
-    header("Location: $url");
-    exit();
-}
-
-// Verificar si el usuario está autenticado
-function isLoggedIn() {
-    return isset($_SESSION['user_id']);
-}
-
-// Verificar si el usuario es vendedor
-function isVendedor() {
-    return isset($_SESSION['es_vendedor']) && $_SESSION['es_vendedor'] === true;
-}
+require_once __DIR__ . '/../helpers/functions.php';
 
 // Obtener información del usuario actual
 function getCurrentUser() {
@@ -34,11 +19,6 @@ function getCurrentUser() {
         error_log("Error al obtener usuario: " . $e->getMessage());
         return null;
     }
-}
-
-// Sanitizar entrada
-function sanitize($data) {
-    return htmlspecialchars(strip_tags(trim($data)));
 }
 
 // Generar token CSRF

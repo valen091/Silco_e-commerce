@@ -1,11 +1,17 @@
 <?php
-require_once __DIR__ . '/includes/header.php';
+// Iniciar sesión al principio del script
+require_once __DIR__ . '/config.php';
+configureSession();
 
-// Check if user is logged in
+// Verificar si el usuario está autenticado
 if (!isset($_SESSION['user_id'])) {
     header('Location: login.php');
     exit();
 }
+
+// Incluir header después de verificar la sesión
+require_once __DIR__ . '/includes/functions.php';
+require_once __DIR__ . '/includes/header.php';
 
 $db = new Database();
 $conn = $db->connect();

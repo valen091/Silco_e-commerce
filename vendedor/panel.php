@@ -1,9 +1,22 @@
 <?php
-require_once '../includes/functions.php';
+// Incluir configuración
+require_once __DIR__ . '/../config.php';
+
+// Configurar e iniciar sesión
+configureSession();
+
+// Incluir funciones
+require_once __DIR__ . '/../includes/functions.php';
 
 // Verificar autenticación y rol de vendedor
-if (!isLoggedIn() || !isVendedor()) {
+if (!isLoggedIn()) {
     header('Location: ../login.php');
+    exit();
+}
+
+if (!isVendedor()) {
+    // Si el usuario no es vendedor, redirigir a la página de perfil
+    header('Location: ../perfil.php');
     exit();
 }
 
@@ -71,7 +84,7 @@ try {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Panel de Vendedor - Silco</title>
-    <link rel="stylesheet" href="../assets/css/style.css">
+    <link rel="stylesheet" href="/Silco/assets/css/style.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
 </head>
 <body>
@@ -287,6 +300,6 @@ try {
     
     <?php include '../includes/footer.php'; ?>
     
-    <script src="../assets/js/dashboard.js"></script>
+    <script src="/Silco/assets/js/dashboard.js"></script>
 </body>
 </html>

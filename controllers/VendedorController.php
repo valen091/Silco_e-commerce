@@ -1,6 +1,11 @@
 <?php
+namespace App\Controllers;
+
 require_once __DIR__ . '/../models/Vendedor.php';
 require_once __DIR__ . '/../helpers/UploadHelper.php';
+
+use App\Models\Vendedor;
+use App\Helpers\UploadHelper;
 
 class VendedorController {
     private $vendedorModel;
@@ -20,7 +25,7 @@ class VendedorController {
      * Show seller profile
      */
     public function mostrarPerfil() {
-        if (!isLoggedIn() || !isVendedor()) {
+        if (!isLoggedIn()) {
             redirect('login.php');
         }
 
@@ -512,6 +517,39 @@ class VendedorController {
         } catch (Exception $e) {
             jsonResponse(['success' => false, 'message' => 'Error al reportar el producto: ' . $e->getMessage()]);
         }
+    }
+
+    /**
+     * Show user's order history
+     */
+    public function misPedidos() {
+        if (!isLoggedIn()) {
+            redirect('login.php');
+        }
+
+        $usuario_id = $_SESSION['user_id'];
+        
+        // Get pagination parameters
+        $pagina_actual = isset($_GET['pagina']) ? (int)$_GET['pagina'] : 1;
+        $por_pagina = 10; // Number of orders per page
+        
+        // Get orders for the current user
+        $pedidos = $this->vendedorModel->obtenerPedidosPorUsuario($usuario_id, [
+            'pagina' => $pagina_actual,
+            'por_pagina' => $por_pagina
+        ]);
+        
+        // Get total orders for pagination
+        $total_pedidos = $this->vendedorModel->contarTotalPedidosPorUsuario($usuario_id);
+        $total_paginas = ceil($total_pedidos / $por_pagina);
+
+        // Render the view
+        $this->render('vendedor/pedidos/mis-pedidos', [
+            'pedidos' => $pedidos,
+            'pagina_actual' => $pagina_actual,
+            'total_paginas' => $total_paginas,
+            'total_pedidos' => $total_pedidos
+        ]);
     }
 
     /**

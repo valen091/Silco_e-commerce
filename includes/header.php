@@ -1,28 +1,22 @@
 <?php
-// Set error reporting
+// Incluir configuración global
+require_once __DIR__ . '/../config.php';
+
+// Definir la URL base si no está definida
+if (!defined('BASE_URL')) {
+    define('BASE_URL', APP_URL);
+}
+
+// Mostrar errores en desarrollo
 error_reporting(E_ALL);
 ini_set('display_errors', 1);
-
-// Define base URL
-define('BASE_URL', 'http://' . $_SERVER['HTTP_HOST'] . '/Silco');
-
-// Start session if not already started
-if (session_status() === PHP_SESSION_NONE) {
-    session_start([
-        'use_strict_mode' => true,
-        'use_cookies' => 1,
-        'cookie_httponly' => 1,
-        'cookie_samesite' => 'Lax',
-        'cookie_lifetime' => 86400 // 24 hours
-    ]);
-}
 
 // Initialize database connection
 $db = null;
 $categories = [];
 
 try {
-    // Load database configuration
+    // Cargar configuración de la base de datos
     require_once __DIR__ . '/../config/database.php';
     
     // Create database connection
@@ -47,11 +41,6 @@ try {
     }
 }
 
-// Helper function to check if user is logged in
-function isLoggedIn() {
-    return isset($_SESSION['user_id']);
-}
-
 // Helper function to check if user is a seller
 function isSeller() {
     return isset($_SESSION['user_role']) && $_SESSION['user_role'] === 'vendedor';
@@ -65,11 +54,11 @@ function isSeller() {
     <title>Silco - Tu tienda en línea</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
-    <link rel="stylesheet" href="assets/css/style.css">
+    <link rel="stylesheet" href="<?= BASE_URL ?>/assets/css/style.css">
     <script>
         // Initialize cart when the page loads
         document.addEventListener('DOMContentLoaded', function() {
-            fetch('backend/cart/init.php', {
+            fetch('<?= BASE_URL ?>/backend/cart/init.php', {
                 method: 'GET',
                 headers: {
                     'Content-Type': 'application/json',
@@ -100,7 +89,7 @@ function isSeller() {
             });
         });
     </script>
-    <script src="assets/js/main.js" defer></script>
+    <script src="<?= BASE_URL ?>/assets/js/main.js" defer></script>
 </head>
 <body>
     <!-- Navbar -->
@@ -172,19 +161,16 @@ function isSeller() {
                                         <i class="bi bi-person me-2"></i>Mi perfil
                                     </a>
                                 </li>
-                                <?php if (isSeller()): ?>
-                                    <li>
-                                        <a class="dropdown-item" href="<?= BASE_URL ?>/vendedor/panel.php">
-                                            <i class="bi bi-speedometer2 me-2"></i>Panel del vendedor
-                                        </a>
-                                    </li>
-                                <?php else: ?>
-                                    <li>
+                                <li>
+                                    <a class="dropdown-item" href="<?= BASE_URL ?>/vendedor/panel.php">
+                                        <i class="bi bi-speedometer2 me-2"></i>Panel del vendedor
+                                    </a>
+                                </li>
+                                <li>
                                         <a class="dropdown-item" href="<?= BASE_URL ?>/ser-vendedor.php">
                                             <i class="bi bi-shop me-2"></i>Ser vendedor
                                         </a>
                                     </li>
-                                <?php endif; ?>
                                 <li><hr class="dropdown-divider"></li>
                                 <li>
                                     <a class="dropdown-item" href="<?= BASE_URL ?>/mis-pedidos.php">

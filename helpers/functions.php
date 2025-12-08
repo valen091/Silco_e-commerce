@@ -44,7 +44,24 @@ function isLoggedIn() {
  * Check if the current user is a seller
  */
 function isVendedor() {
-    return isset($_SESSION['user_role']) && $_SESSION['user_role'] === 'vendedor';
+    if (!isLoggedIn()) {
+        return false;
+    }
+    
+    // Check if the user has the seller role in the database
+    $db = new Database();
+    $conn = $db->connect();
+    
+    try {
+        $stmt = $conn->prepare("SELECT es_vendedor FROM usuarios WHERE id = ?");
+        $stmt->execute([$_SESSION['user_id']]);
+        $user = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        return $user && $user['es_vendedor'] == 1;
+    } catch (PDOException $e) {
+        error_log("Error checking seller role: " . $e->getMessage());
+        return false;
+    }
 }
 
 /**

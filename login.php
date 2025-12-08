@@ -1,20 +1,36 @@
 <?php
-session_start([
-    'use_strict_mode' => true,
-    'use_cookies' => 1,
-    'cookie_httponly' => 1,
-    'cookie_samesite' => 'Lax'
-]);
+// Incluir configuración
+require_once __DIR__ . '/config.php';
 
-require_once 'includes/functions.php';
+// Configurar e iniciar sesión
+configureSession();
 
-// Si el usuario ya está autenticado, redirigir según su rol
+// Incluir funciones
+require_once __DIR__ . '/includes/functions.php';
+
+// Depuración
+error_log('=== INICIO DE LOGIN.PHP ===');
+error_log('Sesión ID: ' . session_id());
+
+// Verificar si el usuario ya está autenticado
 if (isLoggedIn()) {
-    if (isVendedor()) {
-        redirect('vendedor/panel.php');
+    error_log('Usuario ya autenticado. ID: ' . $_SESSION['user_id']);
+    
+    // Verificar si es vendedor
+    $esVendedor = isVendedor();
+    error_log('Es vendedor: ' . ($esVendedor ? 'Sí' : 'No'));
+    
+    // Redirigir según el rol
+    if ($esVendedor) {
+        error_log('Redirigiendo a panel de vendedor');
+        header('Location: vendedor/panel.php');
     } else {
-        redirect('perfil.php');
+        error_log('Redirigiendo a perfil');
+        header('Location: perfil.php');
     }
+    exit();
+} else {
+    error_log('Usuario no autenticado');
 }
 
 $error = '';

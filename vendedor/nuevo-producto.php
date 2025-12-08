@@ -1,8 +1,8 @@
 <?php
 require_once '../includes/functions.php';
 
-// Verificar autenticación y rol de vendedor
-if (!isLoggedIn() || !isVendedor()) {
+// Verificar autenticación
+if (!isLoggedIn()) {
     header('Location: ../login.php');
     exit();
 }
@@ -13,7 +13,7 @@ $user_id = $_SESSION['user_id'];
 
 // Obtener categorías para el formulario
 try {
-    $categorias = $conn->query("SELECT id, nombre FROM categorias ORDER BY nombre")->fetchAll();
+    $categorias = $conn->query("SELECT id, nombre FROM categorias WHERE estado = 1 ORDER BY nombre")->fetchAll(PDO::FETCH_ASSOC);
 } catch (PDOException $e) {
     $categorias = [];
     error_log("Error al obtener categorías: " . $e->getMessage());
@@ -40,6 +40,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $stock = (int)($_POST['stock'] ?? 0);
     $condicion = $_POST['condicion'] ?? 'nuevo';
     $activo = isset($_POST['activo']) ? 1 : 0;
+    $destacado = isset($_POST['destacado']) ? 1 : 0;
     
     // Validaciones
     $errores = [];
@@ -70,50 +71,41 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     
     // Procesar imágenes
     $imagenes = [];
-    if (isset($_FILES['imagenes']) && !empty($_FILES['imagenes']['name'][0])) {
+    if (isset($_FILES['imagenes']) && is_array($_FILES['imagenes']['name'])) {
         $total_imagenes = count($_FILES['imagenes']['name']);
+        $upload_dir = '../uploads/productos/';
+        
+        // Crear directorio si no existe
+        if (!file_exists($upload_dir)) {
+            mkdir($upload_dir, 0755, true);
+        }
         
         for ($i = 0; $i < $total_imagenes; $i++) {
             if ($_FILES['imagenes']['error'][$i] === UPLOAD_ERR_OK) {
-                $nombre_archivo = $_FILES['imagenes']['name'][$i];
-                $tipo_archivo = $_FILES['imagenes']['type'][$i];
-                $tamano_archivo = $_FILES['imagenes']['size'][$i];
-                $tmp_archivo = $_FILES['imagenes']['tmp_name'][$i];
+                $tmp_name = $_FILES['imagenes']['tmp_name'][$i];
+                $name = basename($_FILES['imagenes']['name'][$i]);
+                $extension = strtolower(pathinfo($name, PATHINFO_EXTENSION));
+                $nuevo_nombre = uniqid('img_') . '.' . $extension;
+                $ruta_destino = $upload_dir . $nuevo_nombre;
                 
                 // Validar tipo de archivo
-                $extension = strtolower(pathinfo($nombre_archivo, PATHINFO_EXTENSION));
-                $extensiones_permitidas = ['jpg', 'jpeg', 'png', 'gif', 'webp'];
-                
-                if (!in_array($extension, $extensiones_permitidas)) {
-                    $errores[] = "El archivo $nombre_archivo no es una imagen válida. Formatos permitidos: " . implode(', ', $extensiones_permitidas);
+                $tipo_valido = ['jpg', 'jpeg', 'png', 'gif', 'webp'];
+                if (!in_array($extension, $tipo_valido)) {
+                    $errores[] = 'El archivo ' . $name . ' no es una imagen válida. Formatos aceptados: ' . implode(', ', $tipo_valido);
                     continue;
                 }
                 
-                // Validar tamaño (máximo 5MB)
-                $tamano_maximo = 5 * 1024 * 1024; // 5MB
-                if ($tamano_archivo > $tamano_maximo) {
-                    $errores[] = "El archivo $nombre_archivo es demasiado grande. Tamaño máximo: 5MB";
+                // Validar tamaño (máx 5MB)
+                if ($_FILES['imagenes']['size'][$i] > 5 * 1024 * 1024) {
+                    $errores[] = 'La imagen ' . $name . ' es demasiado grande. El tamaño máximo permitido es 5MB.';
                     continue;
                 }
                 
-                // Generar nombre único para el archivo
-                $nombre_unico = uniqid('prod_') . '.' . $extension;
-                $ruta_destino = '../assets/img/productos/' . $nombre_unico;
-                
-                // Crear directorio si no existe
-                if (!is_dir('../assets/img/productos/')) {
-                    mkdir('../assets/img/productos/', 0755, true);
-                }
-                
-                // Mover el archivo subido al directorio de destino
-                if (move_uploaded_file($tmp_archivo, $ruta_destino)) {
-                    $imagenes[] = [
-                        'nombre' => $nombre_unico,
-                        'ruta' => $ruta_destino,
-                        'orden' => $i
-                    ];
+                // Mover el archivo
+                if (move_uploaded_file($tmp_name, $ruta_destino)) {
+                    $imagenes[] = str_replace('../', '', $ruta_destino);
                 } else {
-                    $errores[] = "Error al subir el archivo $nombre_archivo. Por favor, inténtalo de nuevo.";
+                    $errores[] = 'Error al subir la imagen ' . $name;
                 }
             }
         }
@@ -129,21 +121,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             // Insertar el producto
             $stmt = $conn->prepare("
                 INSERT INTO productos (
-                    vendedor_id, categoria_id, nombre, descripcion, 
-                    precio, precio_oferta, stock, condicion, activo
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    nombre, descripcion, categoria_id, precio, precio_oferta, 
+                    stock, condicion, activo, destacado, vendedor_id, fecha_creacion
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
             ");
             
             $stmt->execute([
-                $user_id, 
-                $categoria_id, 
                 $nombre, 
                 $descripcion, 
+                $categoria_id, 
                 $precio, 
                 $precio_oferta, 
                 $stock, 
                 $condicion, 
-                $activo
+                $activo, 
+                $destacado, 
+                $user_id
             ]);
             
             $producto_id = $conn->lastInsertId();
@@ -151,16 +144,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             // Guardar las imágenes
             if (!empty($imagenes)) {
                 $stmt = $conn->prepare("
-                    INSERT INTO imagenes_producto (producto_id, imagen_url, orden) 
-                    VALUES (?, ?, ?)
-                
+                    INSERT INTO imagenes_producto (producto_id, imagen_url) 
+                    VALUES (?, ?)
                 ");
                 
-                foreach ($imagenes as $orden => $imagen) {
+                foreach ($imagenes as $imagen) {
                     $stmt->execute([
                         $producto_id,
-                        str_replace('../', '', $imagen['ruta']), // Guardar ruta relativa
-                        $orden
+                        $imagen
                     ]);
                 }
             }

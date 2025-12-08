@@ -160,39 +160,19 @@ $router->setNotFound(function() {
     }
 });
 
+// Add protected routes middleware
+$protected_routes = ['mi-cuenta', 'mis-pedidos', 'favoritos', 'panel-vendedor', 'vendedor', 
+                   'vendedor/panel', 'vendedor/productos', 'vendedor/nuevo-producto'];
+
+$current_uri = trim(parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH), '/');
+$basePath = str_replace('/public', '', dirname($_SERVER['SCRIPT_NAME']));
+$current_uri = preg_replace('#^' . preg_quote($basePath, '#') . '#', '', $current_uri);
+$current_uri = trim($current_uri, '/');
+
+// Check if current route is protected
+if (in_array($current_uri, $protected_routes)) {
+    requireAuth();
+}
+
 // Dispatch the request
 $router->dispatch();
-
-// Function to check if user is logged in
-function requireAuth() {
-    if (!isset($_SESSION['user_id'])) {
-        $_SESSION['redirect_after_login'] = $_SERVER['REQUEST_URI'];
-        header('Location: /Silco/login');
-        exit();
-    }
-}
-
-// Check if the requested route exists
-if (array_key_exists($request, $routes)) {
-    $file = __DIR__ . '/' . $routes[$request];
-    
-    // Check if the file exists
-    if (file_exists($file)) {
-        // Check authentication for protected routes
-        $protected_routes = ['mi-cuenta', 'mis-pedidos', 'favoritos', 'panel-vendedor', 'vendedor', 
-                           'vendedor/panel', 'vendedor/productos', 'vendedor/nuevo-producto'];
-        
-        if (in_array($request, $protected_routes)) {
-            requireAuth();
-        }
-        
-        // Include the file
-        require $file;
-    } else {
-        // File not found
-        handle404();
-    }
-} else {
-    // Route not found
-    handle404();
-}
