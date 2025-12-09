@@ -24,7 +24,14 @@ class UploadHelper {
         
         // Create upload directory if it doesn't exist
         if ($this->config['create_dirs'] && !is_dir($this->uploadDir)) {
-            mkdir($this->uploadDir, 0755, true);
+            if (!@mkdir($this->uploadDir, 0777, true) && !is_dir($this->uploadDir)) {
+                throw new \RuntimeException(sprintf('No se pudo crear el directorio "%s"', $this->uploadDir));
+            }
+            // Intentar establecer permisos explícitamente
+            @chmod($this->uploadDir, 0777);
+        } elseif (is_dir($this->uploadDir) && !is_writable($this->uploadDir)) {
+            // Si el directorio existe pero no es escribible, intentar hacerlo escribible
+            @chmod($this->uploadDir, 0777);
         }
     }
 

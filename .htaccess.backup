@@ -1,0 +1,71 @@
+# Enable the rewrite engine
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    RewriteBase /Silco/
+    
+    # Handle front controller pattern
+    RewriteCond %{REQUEST_FILENAME} !-f
+    RewriteCond %{REQUEST_FILENAME} !-d
+    RewriteRule ^(.*)$ router.php [QSA,L]
+    
+    # Redirect missing product images to placeholder
+    RewriteCond %{REQUEST_FILENAME} !-f
+    RewriteRule ^uploads/productos/.*\.(jpg|jpeg|png|gif|webp)$ /Silco/assets/img/placeholder.php [L]
+</IfModule>
+
+# Session settings
+<IfModule mod_php7.c>
+    php_flag session.auto_start 0
+    php_flag session.use_only_cookies 1
+    php_flag session.cookie_httponly 1
+    php_flag session.cookie_secure 0
+    php_flag session.use_strict_mode 1
+    php_value session.cookie_samesite "Lax"
+</IfModule>
+
+# Security Headers
+<IfModule mod_headers.c>
+    Header set X-Content-Type-Options "nosniff"
+    Header set X-Frame-Options "SAMEORIGIN"
+    Header set X-XSS-Protection "1; mode=block"
+</IfModule>
+
+# Disable directory listing
+Options -Indexes
+
+# Set default charset
+AddDefaultCharset UTF-8
+
+# Set the default handler
+DirectoryIndex index.php index.html
+
+# Prevent access to sensitive files
+<FilesMatch "^\.|composer\.(json|lock)|package(-lock)?\.json|webpack\.config\.js|gulpfile\.js|readme\.md|CHANGELOG\.md|\.gitignore|\.env">
+    Require all denied
+</FilesMatch>
+<IfModule mod_deflate.c>
+    AddOutputFilterByType DEFLATE text/plain
+    AddOutputFilterByType DEFLATE text/html
+    AddOutputFilterByType DEFLATE text/xml
+    AddOutputFilterByType DEFLATE text/css
+    AddOutputFilterByType DEFLATE application/xml
+    AddOutputFilterByType DEFLATE application/xhtml+xml
+    AddOutputFilterByType DEFLATE application/rss+xml
+    AddOutputFilterByType DEFLATE application/javascript
+    AddOutputFilterByType DEFLATE application/x-javascript
+</IfModule>
+
+# Set default character set
+AddDefaultCharset UTF-8
+
+# PHP settings
+<IfModule mod_php7.c>
+    php_flag display_errors Off
+    php_flag log_errors On
+    php_value error_log /var/log/php_errors.log
+    php_value max_execution_time 300
+    php_value max_input_time 300
+    php_value memory_limit 256M
+    php_value post_max_size 64M
+    php_value upload_max_filesize 64M
+</IfModule>

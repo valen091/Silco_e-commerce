@@ -7,8 +7,8 @@ if (!isLoggedIn() || !isVendedor()) {
     exit();
 }
 
-$db = new Database();
-$conn = $db->connect();
+$db = Database::getInstance();
+$conn = $db->getConnection();
 $user_id = $_SESSION['user_id'];
 
 // Manejar eliminación de producto
@@ -373,49 +373,31 @@ try {
                                                     <?php endif; ?>
                                                 </td>
                                                 <td>
-                                                    <div class="btn-group" role="group">
+                                                    <div class="d-flex flex-wrap gap-1">
+                                                        <!-- Edit Button -->
                                                         <a href="editar-producto.php?id=<?php echo $producto['id']; ?>" 
-                                                           class="btn btn-sm btn-outline-primary" 
-                                                           title="Editar">
-                                                            <i class="fas fa-edit"></i>
+                                                           class="btn btn-sm btn-primary d-flex align-items-center" 
+                                                           title="Editar producto">
+                                                            <i class="fas fa-edit me-1"></i> Editar
                                                         </a>
+                                                        
+                                                        <!-- View Button -->
                                                         <a href="../producto.php?id=<?php echo $producto['id']; ?>" 
                                                            target="_blank" 
-                                                           class="btn btn-sm btn-outline-secondary" 
+                                                           class="btn btn-sm btn-outline-primary d-flex align-items-center" 
                                                            title="Ver en tienda">
-                                                            <i class="fas fa-eye"></i>
+                                                            <i class="fas fa-eye me-1"></i> Ver
                                                         </a>
-                                                        <button type="button" 
-                                                                class="btn btn-sm btn-outline-danger" 
-                                                                data-bs-toggle="modal" 
-                                                                data-bs-target="#eliminarModal<?php echo $producto['id']; ?>"
-                                                                title="Eliminar">
-                                                            <i class="fas fa-trash"></i>
-                                                        </button>
-                                                    </div>
-                                                    
-                                                    <!-- Modal de confirmación de eliminación -->
-                                                    <div class="modal fade" id="eliminarModal<?php echo $producto['id']; ?>" tabindex="-1" aria-hidden="true">
-                                                        <div class="modal-dialog">
-                                                            <div class="modal-content">
-                                                                <div class="modal-header">
-                                                                    <h5 class="modal-title">Confirmar eliminación</h5>
-                                                                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
-                                                                </div>
-                                                                <div class="modal-body">
-                                                                    <p>¿Estás seguro de que deseas eliminar el producto <strong><?php echo htmlspecialchars($producto['nombre']); ?></strong>? Esta acción no se puede deshacer.</p>
-                                                                </div>
-                                                                <div class="modal-footer">
-                                                                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-                                                                    <form method="POST" style="display:inline;">
-                                                                        <input type="hidden" name="producto_id" value="<?php echo $producto['id']; ?>">
-                                                                        <button type="submit" name="eliminar_producto" class="btn btn-danger">
-                                                                            <i class="fas fa-trash me-1"></i> Eliminar
-                                                                        </button>
-                                                                    </form>
-                                                                </div>
-                                                            </div>
-                                                        </div>
+                                                        
+                                                        <!-- Delete Button -->
+                                                        <form action="productos.php" method="POST" class="d-inline" 
+                                                              onsubmit="return confirm('¿Estás seguro de que deseas eliminar este producto? Esta acción no se puede deshacer.');">
+                                                            <input type="hidden" name="producto_id" value="<?php echo $producto['id']; ?>">
+                                                            <button type="submit" name="eliminar_producto" class="btn btn-sm btn-outline-danger d-flex align-items-center" 
+                                                                    title="Eliminar producto">
+                                                                <i class="fas fa-trash-alt"></i>
+                                                            </button>
+                                                        </form>
                                                     </div>
                                                 </td>
                                             </tr>
@@ -481,7 +463,278 @@ try {
             </div>
         </div>
     </div>
+    <!-- Floating Action Button -->
+    <button id="addProductFab" class="btn btn-primary btn-fab" title="Agregar Producto">
+        <i class="fas fa-plus"></i>
+    </button>
+
+    <!-- Sliding Panel -->
+    <div class="sliding-panel" id="addProductPanel">
+        <div class="sliding-panel-header">
+            <h4>Agregar Nuevo Producto</h4>
+            <button type="button" class="btn-close" id="closePanel"></button>
+        </div>
+        <div class="sliding-panel-body" id="productFormContainer">
+            <!-- Form will be loaded here via AJAX -->
+            <div class="text-center py-5">
+                <div class="spinner-border text-primary" role="status">
+                    <span class="visually-hidden">Cargando...</span>
+                </div>
+                <p class="mt-2">Cargando formulario...</p>
+            </div>
+        </div>
+    </div>
+
+    <style>
+        /* Floating Action Button */
+        .btn-fab {
+            position: fixed;
+            bottom: 30px;
+            right: 30px;
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            font-size: 24px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+            z-index: 1000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.3s ease;
+        }
+
+        .btn-fab:hover {
+            transform: scale(1.1);
+            box-shadow: 0 6px 12px rgba(0, 0, 0, 0.3);
+        }
+
+        /* Sliding Panel */
+        .sliding-panel {
+            position: fixed;
+            top: 0;
+            right: -500px;
+            width: 500px;
+            height: 100vh;
+            background: white;
+            box-shadow: -2px 0 10px rgba(0, 0, 0, 0.1);
+            z-index: 1050;
+            transition: right 0.3s ease-in-out;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .sliding-panel.open {
+            right: 0;
+        }
+
+        .sliding-panel-header {
+            padding: 20px;
+            border-bottom: 1px solid #eee;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background-color: #f8f9fa;
+        }
+
+        .sliding-panel-body {
+            flex: 1;
+            overflow-y: auto;
+            padding: 20px;
+        }
+
+        /* Overlay */
+        .panel-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 1040;
+            opacity: 0;
+            visibility: hidden;
+            transition: opacity 0.3s ease-in-out;
+        }
+
+        .panel-overlay.visible {
+            opacity: 1;
+            visibility: visible;
+        }
+
+        @media (max-width: 576px) {
+            .sliding-panel {
+                width: 100%;
+                right: -100%;
+            }
+        }
+    </style>
+
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script src="../assets/js/main.js"></script>
+    <script>
+        $(document).ready(function() {
+            const panel = $('#addProductPanel');
+            const overlay = $('<div class="panel-overlay"></div>').appendTo('body');
+            const fab = $('#addProductFab');
+            const closeBtn = $('#closePanel');
+            const formContainer = $('#productFormContainer');
+
+            // Load form via AJAX when panel is opened
+            function loadProductForm() {
+                formContainer.html(`
+                    <div class="text-center py-5">
+                        <div class="spinner-border text-primary" role="status">
+                            <span class="visually-hidden">Cargando...</span>
+                        </div>
+                        <p class="mt-2">Cargando formulario...</p>
+                    </div>
+                `);
+
+                $.get('producto-form.php', function(data) {
+                    formContainer.html(data);
+                    // Reinitialize any necessary plugins or scripts
+                    if (typeof initFormValidation === 'function') {
+                        initFormValidation();
+                    }
+                }).fail(function() {
+                    formContainer.html(`
+                        <div class="alert alert-danger">
+                            Error al cargar el formulario. Por favor, recarga la página o inténtalo de nuevo más tarde.
+                        </div>
+                    `);
+                });
+            }
+
+            // Toggle panel
+            function togglePanel() {
+                panel.toggleClass('open');
+                overlay.toggleClass('visible');
+                
+                if (panel.hasClass('open') && formContainer.find('form').length === 0) {
+                    loadProductForm();
+                }
+            }
+
+            // Event listeners
+            fab.on('click', togglePanel);
+            closeBtn.on('click', togglePanel);
+            overlay.on('click', togglePanel);
+
+            // Close panel when pressing Escape key
+            $(document).on('keydown', function(e) {
+                if (e.key === 'Escape' && panel.hasClass('open')) {
+                    togglePanel();
+                }
+            });
+
+            // Handle form submission
+            $(document).on('submit', '#productoForm', function(e) {
+                e.preventDefault();
+                
+                const formData = new FormData(this);
+                
+                $.ajax({
+                    url: 'nuevo-producto.php',
+                    type: 'POST',
+                    data: formData,
+                    processData: false,
+                    contentType: false,
+                    success: function(response) {
+                        // Show success message
+                        const successMsg = `
+                            <div class="alert alert-success">
+                                <i class="fas fa-check-circle me-2"></i>
+                                Producto creado exitosamente. Redirigiendo...
+                            </div>
+                        `;
+                        formContainer.html(successMsg);
+                        
+                        // Reload the page after a short delay
+                        setTimeout(() => {
+                            window.location.reload();
+                        }, 1500);
+                    },
+                    error: function(xhr) {
+                        let errorMsg = 'Error al guardar el producto. Por favor, inténtalo de nuevo.';
+                        
+                        // Try to parse error response
+                        try {
+                            const response = JSON.parse(xhr.responseText);
+                            if (response.error) {
+                                errorMsg = response.error;
+                            } else if (response.errors) {
+                                errorMsg = '<ul class="mb-0">' + 
+                                    response.errors.map(err => `<li>${err}</li>`).join('') + 
+                                    '</ul>';
+                            }
+                        } catch (e) {
+                            console.error('Error parsing response:', e);
+                        }
+                        
+                        formContainer.prepend(`
+                            <div class="alert alert-danger">
+                                <i class="fas fa-exclamation-triangle me-2"></i>
+                                ${errorMsg}
+                            </div>
+                        `);
+                        
+                        // Scroll to top to show error
+                        formContainer.scrollTop(0);
+                    }
+                });
+            });
+        });
+    </script>
+    
+    <!-- Modal de confirmación de eliminación -->
+    <div class="modal fade" id="deleteModal" tabindex="-1" aria-labelledby="deleteModalLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="deleteModalLabel">Confirmar eliminación</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+                </div>
+                <div class="modal-body">
+                    ¿Estás seguro de que deseas eliminar este producto? Esta acción no se puede deshacer.
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <form id="deleteForm" method="POST" style="display: inline;">
+                        <input type="hidden" name="producto_id" id="producto_id">
+                        <input type="hidden" name="eliminar_producto" value="1">
+                        <button type="submit" class="btn btn-danger">Eliminar</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        // Manejar la apertura del modal de eliminación
+        document.addEventListener('DOMContentLoaded', function() {
+            const deleteModal = document.getElementById('deleteModal');
+            const deleteForm = document.getElementById('deleteForm');
+            const productoIdInput = document.getElementById('producto_id');
+            
+            // Configurar el modal de Bootstrap
+            const modal = new bootstrap.Modal(deleteModal);
+            
+            // Manejar clic en el botón de eliminar
+            document.querySelectorAll('.btn-delete').forEach(button => {
+                button.addEventListener('click', function() {
+                    const productoId = this.getAttribute('data-id');
+                    productoIdInput.value = productoId;
+                    modal.show();
+                });
+            });
+            
+            // Manejar envío del formulario de eliminación
+            deleteForm.addEventListener('submit', function(e) {
+                // No es necesario hacer nada aquí, el formulario se enviará normalmente
+                // y el servidor manejará la eliminación
+            });
+        });
+    </script>
 </body>
 </html>

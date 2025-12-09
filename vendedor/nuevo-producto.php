@@ -1,25 +1,127 @@
 <?php
-require_once '../includes/functions.php';
+// Iniciar la sesión primero
+require_once __DIR__ . '/../config.php';
 
-// Verificar autenticación y rol de vendedor
-if (!isLoggedIn() || !isVendedor()) {
-    header('Location: ../login.php');
+// Función para obtener mensajes de error de subida
+function getUploadErrorMessage($error_code) {
+    switch ($error_code) {
+        case UPLOAD_ERR_INI_SIZE:
+            return 'El archivo excede el tamaño máximo permitido por el servidor.';
+        case UPLOAD_ERR_FORM_SIZE:
+            return 'El archivo excede el tamaño máximo permitido por el formulario.';
+        case UPLOAD_ERR_PARTIAL:
+            return 'El archivo fue subido solo parcialmente.';
+        case UPLOAD_ERR_NO_FILE:
+            return 'No se subió ningún archivo.';
+        case UPLOAD_ERR_NO_TMP_DIR:
+            return 'Falta la carpeta temporal.';
+        case UPLOAD_ERR_CANT_WRITE:
+            return 'Error al escribir el archivo en el disco.';
+        case UPLOAD_ERR_EXTENSION:
+            return 'Una extensión de PHP detuvo la carga del archivo.';
+        default:
+            return 'Error desconocido al subir el archivo.';
+    }
+}
+
+// Debug: Mostrar errores
+ini_set('display_errors', 1);
+error_reporting(E_ALL);
+
+// Incluir el manejador de sesión
+require_once __DIR__ . '/../includes/Session.php';
+
+// Inicializar la sesión
+$session = Session::getInstance();
+
+// Incluir funciones
+require_once __DIR__ . '/../includes/functions.php';
+require_once __DIR__ . '/../includes/Database.php';
+
+// Verificar si el usuario está autenticado
+if (!isLoggedIn()) {
+    $_SESSION['redirect_after_login'] = '/Silco/vendedor/nuevo-producto.php';
+    header('Location: /Silco/login.php');
     exit();
 }
 
-$db = new Database();
-$conn = $db->connect();
+// Verificar si el usuario es vendedor
+if (!isVendedor()) {
+    $_SESSION['error'] = 'No tienes permiso para acceder a esta sección.';
+    header('Location: /Silco/perfil.php');
+    exit();
+}
+
+// Actualizar la actividad de la sesión
+$session->set('last_activity', time());
+
+// Obtener información del usuario
+try {
+    $db = Database::getInstance();
+    $conn = $db->getConnection();
+    $stmt = $conn->prepare("SELECT id, email, es_vendedor FROM usuarios WHERE id = ?");
+    $stmt->execute([$_SESSION['user_id']]);
+    $user = $stmt->fetch(PDO::FETCH_ASSOC);
+    
+    // Debug: Mostrar información de sesión en el log de errores
+    error_log('Acceso a nuevo-producto.php - User ID: ' . $_SESSION['user_id']);
+        
+    // Verificar si el usuario es vendedor en la base de datos
+    if ($user && !$user['es_vendedor']) {
+        error_log('Usuario no es vendedor en la base de datos - User ID: ' . $_SESSION['user_id']);
+        $_SESSION['error'] = 'No tienes permisos de vendedor en el sistema.';
+        header('Location: /Silco/perfil.php');
+        exit();
+    }
+} catch (Exception $e) {
+    error_log('Error al conectar a la base de datos: ' . $e->getMessage());
+    $_SESSION['error'] = 'Error al verificar los permisos. Por favor, intente de nuevo.';
+    header('Location: /Silco/error.php');
+    exit();
+}
+error_log('Session data: ' . print_r($_SESSION, true));
+
+// Verificar autenticación
+if (!isLoggedIn()) {
+    error_log('Usuario no autenticado. Redirigiendo a login.');
+    // Usar ruta relativa para la redirección
+    $currentUrl = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? 'https' : 'http') . "://$_SERVER[HTTP_HOST]$_SERVER[REQUEST_URI]";
+    $_SESSION['redirect_after_login'] = '/Silco' . str_replace($_SERVER['DOCUMENT_ROOT'], '', $_SERVER['SCRIPT_NAME']);
+    header('Location: /Silco/login.php');
+    exit();
+}
+
+// Verificar rol de vendedor
+if (!isVendedor()) {
+    error_log('Usuario no tiene rol de vendedor. ID de usuario: ' . ($_SESSION['user_id'] ?? 'no definido'));
+    $_SESSION['error'] = 'No tienes permiso para acceder a esta sección.';
+    header('Location: panel.php');
+    exit();
+}
+
+$db = Database::getInstance();
+$conn = $db->getConnection();
 $user_id = $_SESSION['user_id'];
 
-// Obtener categorías para el formulario
+// Obtener categorías desde la base de datos (misma consulta que en index.php)
+$categorias = [];
 try {
-    $categorias = $conn->query("SELECT id, nombre FROM categorias ORDER BY nombre")->fetchAll();
+    // Usar la misma consulta que en index.php (sin el filtro activa = 1)
+    $stmt = $conn->query("SELECT id, nombre FROM categorias ORDER BY nombre");
+    $categorias = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    
+    // Debug: Registrar las categorías obtenidas
+    error_log('Categorías obtenidas: ' . print_r($categorias, true));
+    
+    if (empty($categorias)) {
+        error_log('No se encontraron categorías en la base de datos');
+        $_SESSION['error'] = 'No se encontraron categorías disponibles. Por favor, contacte al administrador.';
+    }
 } catch (PDOException $e) {
+    error_log('Error al obtener categorías: ' . $e->getMessage());
+    $_SESSION['error'] = 'Error al cargar las categorías. Por favor, intente de nuevo más tarde.';
+    // Usar un array vacío para evitar errores en la vista
     $categorias = [];
-    error_log("Error al obtener categorías: " . $e->getMessage());
-    $_SESSION['error'] = 'Error al cargar las categorías. Por favor, inténtalo de nuevo.';
-    header('Location: productos.php');
-    exit();
 }
 
 // Procesar el formulario cuando se envía
@@ -34,18 +136,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // Obtener y validar datos del formulario
     $nombre = trim($_POST['nombre'] ?? '');
     $descripcion = trim($_POST['descripcion'] ?? '');
+    $precio = isset($_POST['precio']) ? (float)str_replace(['$', ','], '', $_POST['precio']) : 0;
     $categoria_id = (int)($_POST['categoria_id'] ?? 0);
-    $precio = (float)str_replace(',', '.', $_POST['precio'] ?? '0');
-    $precio_oferta = !empty($_POST['precio_oferta']) ? (float)str_replace(',', '.', $_POST['precio_oferta']) : null;
-    $stock = (int)($_POST['stock'] ?? 0);
+    $stock = isset($_POST['stock']) ? (int)$_POST['stock'] : 0;
+    $peso_gramos = isset($_POST['peso_gramos']) ? (int)$_POST['peso_gramos'] : 1000;
+    $largo_mm = isset($_POST['largo_mm']) ? (int)$_POST['largo_mm'] : 100;
+    $ancho_mm = isset($_POST['ancho_mm']) ? (int)$_POST['ancho_mm'] : 100;
+    $alto_mm = isset($_POST['alto_mm']) ? (int)$_POST['alto_mm'] : 100;
+    $marca = trim($_POST['marca'] ?? '');
+    $modelo = trim($_POST['modelo'] ?? '');
+    $sku = trim($_POST['sku'] ?? '');
     $condicion = $_POST['condicion'] ?? 'nuevo';
-    $activo = isset($_POST['activo']) ? 1 : 0;
+    $activo = 1; // Por defecto activo
     
     // Validaciones
     $errores = [];
     
     if (empty($nombre)) {
         $errores[] = 'El nombre del producto es obligatorio.';
+    } elseif (strlen($nombre) > 255) {
+        $errores[] = 'El nombre no puede tener más de 255 caracteres.';
     }
     
     if (empty($descripcion)) {
@@ -57,68 +167,119 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
     
     if ($precio <= 0) {
-        $errores[] = 'El precio debe ser mayor a cero.';
-    }
-    
-    if ($precio_oferta !== null && $precio_oferta >= $precio) {
-        $errores[] = 'El precio de oferta debe ser menor al precio normal.';
+        $errores[] = 'El precio debe ser mayor a 0.';
     }
     
     if ($stock < 0) {
         $errores[] = 'El stock no puede ser negativo.';
     }
     
-    // Procesar imágenes
+    if ($peso_gramos <= 0) {
+        $errores[] = 'El peso debe ser mayor a 0 gramos.';
+    }
+    
+    if ($largo_mm <= 0 || $ancho_mm <= 0 || $alto_mm <= 0) {
+        $errores[] = 'Todas las dimensiones deben ser mayores a 0 mm.';
+    }
+    
+    // Inicializar array para imágenes
     $imagenes = [];
-    if (isset($_FILES['imagenes']) && !empty($_FILES['imagenes']['name'][0])) {
-        $total_imagenes = count($_FILES['imagenes']['name']);
-        
-        for ($i = 0; $i < $total_imagenes; $i++) {
-            if ($_FILES['imagenes']['error'][$i] === UPLOAD_ERR_OK) {
-                $nombre_archivo = $_FILES['imagenes']['name'][$i];
-                $tipo_archivo = $_FILES['imagenes']['type'][$i];
-                $tamano_archivo = $_FILES['imagenes']['size'][$i];
-                $tmp_archivo = $_FILES['imagenes']['tmp_name'][$i];
-                
-                // Validar tipo de archivo
-                $extension = strtolower(pathinfo($nombre_archivo, PATHINFO_EXTENSION));
-                $extensiones_permitidas = ['jpg', 'jpeg', 'png', 'gif', 'webp'];
-                
-                if (!in_array($extension, $extensiones_permitidas)) {
-                    $errores[] = "El archivo $nombre_archivo no es una imagen válida. Formatos permitidos: " . implode(', ', $extensiones_permitidas);
-                    continue;
-                }
-                
-                // Validar tamaño (máximo 5MB)
-                $tamano_maximo = 5 * 1024 * 1024; // 5MB
-                if ($tamano_archivo > $tamano_maximo) {
-                    $errores[] = "El archivo $nombre_archivo es demasiado grande. Tamaño máximo: 5MB";
-                    continue;
-                }
-                
-                // Generar nombre único para el archivo
-                $nombre_unico = uniqid('prod_') . '.' . $extension;
-                $ruta_destino = '../assets/img/productos/' . $nombre_unico;
-                
-                // Crear directorio si no existe
-                if (!is_dir('../assets/img/productos/')) {
-                    mkdir('../assets/img/productos/', 0755, true);
-                }
-                
-                // Mover el archivo subido al directorio de destino
-                if (move_uploaded_file($tmp_archivo, $ruta_destino)) {
-                    $imagenes[] = [
-                        'nombre' => $nombre_unico,
-                        'ruta' => $ruta_destino,
-                        'orden' => $i
-                    ];
-                } else {
-                    $errores[] = "Error al subir el archivo $nombre_archivo. Por favor, inténtalo de nuevo.";
-                }
+    $has_valid_images = false;
+    
+    // Verificar si se subieron imágenes
+    if (isset($_FILES['imagenes']) && is_array($_FILES['imagenes']['name'])) {
+        // Filtrar elementos vacíos del array de archivos
+        $total_imagenes = 0;
+        foreach ($_FILES['imagenes']['name'] as $key => $name) {
+            if (!empty($name) && $_FILES['imagenes']['error'][$key] === UPLOAD_ERR_OK) {
+                $total_imagenes++;
             }
         }
+        
+        if ($total_imagenes === 0) {
+            $errores[] = 'Debes subir al menos una imagen del producto.';
+        } else {
+            // Usar ruta absoluta para mayor confiabilidad
+            $base_upload_dir = dirname(__DIR__) . '/uploads';
+            $upload_dir = $base_upload_dir . '/productos/';
+            
+            // Crear directorio base si no existe
+            if (!file_exists($base_upload_dir)) {
+                if (!@mkdir($base_upload_dir, 0755, true)) {
+                    $error = error_get_last();
+                    $error_message = $error['message'] ?? 'Error desconocido';
+                    error_log("Error al crear directorio base: " . $error_message);
+                    $errores[] = 'No se pudo crear el directorio base de subidas. Error: ' . $error_message;
+                    $errores[] = 'Ruta: ' . $base_upload_dir;
+                }
+            }
+            
+            // Crear directorio de productos si no existe
+            if (empty($errores) && !file_exists($upload_dir)) {
+                if (!@mkdir($upload_dir, 0755, true)) {
+                    $error = error_get_last();
+                    $error_message = $error['message'] ?? 'Error desconocido';
+                    error_log("Error al crear directorio de productos: " . $error_message);
+                    $errores[] = 'No se pudo crear el directorio de subida. Error: ' . $error_message;
+                    $errores[] = 'Ruta: ' . $upload_dir;
+                }
+            }
+
+            // Verificar permisos del directorio
+            if (empty($errores) && !is_writable($upload_dir)) {
+                // Intentar cambiar los permisos
+                if (!@chmod($upload_dir, 0775)) {
+                    $errores[] = 'El directorio no tiene permisos de escritura. Por favor, verifica los permisos de la carpeta: ' . $upload_dir;
+                    $errores[] = 'Ejecuta en la terminal: chmod -R 775 ' . $upload_dir;
+                }
+            }
+            
+            // Procesar cada imagen solo si no hay errores
+            if (empty($errores)) {
+                for ($i = 0; $i < count($_FILES['imagenes']['name']); $i++) {
+                    if ($_FILES['imagenes']['error'][$i] === UPLOAD_ERR_OK) {
+                        $tmp_name = $_FILES['imagenes']['tmp_name'][$i];
+                        $name = basename($_FILES['imagenes']['name'][$i]);
+                        $extension = strtolower(pathinfo($name, PATHINFO_EXTENSION));
+                        $nuevo_nombre = uniqid('img_') . '.' . $extension;
+                        $ruta_destino = $upload_dir . $nuevo_nombre;
+                        
+                        // Validar tipo de archivo
+                        $tipo_valido = ['jpg', 'jpeg', 'png', 'gif', 'webp'];
+                        if (!in_array($extension, $tipo_valido)) {
+                            $errores[] = 'El archivo ' . htmlspecialchars($name) . ' no es una imagen válida. Formatos aceptados: ' . implode(', ', $tipo_valido);
+                            continue;
+                        }
+                        
+                        // Validar tamaño (máx 5MB)
+                        if ($_FILES['imagenes']['size'][$i] > 5 * 1024 * 1024) {
+                            $errores[] = 'La imagen ' . htmlspecialchars($name) . ' es demasiado grande. El tamaño máximo permitido es 5MB.';
+                            continue;
+                        }
+                        
+                        // Validar que sea una imagen real
+                        $check = getimagesize($tmp_name);
+                        if ($check === false) {
+                            $errores[] = 'El archivo ' . htmlspecialchars($name) . ' no es una imagen válida.';
+                            continue;
+                        }
+                        
+                        // Intentar mover el archivo
+                        if (move_uploaded_file($tmp_name, $ruta_destino)) {
+                            $imagenes[] = $nuevo_nombre;
+                            $has_valid_images = true;
+                        } else {
+                            $errores[] = 'Error al subir la imagen ' . htmlspecialchars($name) . '. Inténtalo de nuevo.';
+                        }
+                    } else if ($_FILES['imagenes']['error'][$i] !== UPLOAD_ERR_NO_FILE) {
+                        $errores[] = 'Error al subir la imagen: ' . getUploadErrorMessage($_FILES['imagenes']['error'][$i]);
+                    }
+                }
+            }
+            // Removido mensaje de error duplicado
+        }
     } else {
-        $errores[] = 'Debes subir al menos una imagen del producto.';
+        $errores[] = 'No se recibieron archivos o el formulario no se envió correctamente.';
     }
     
     // Si no hay errores, guardar en la base de datos
@@ -126,55 +287,114 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         try {
             $conn->beginTransaction();
             
-            // Insertar el producto
-            $stmt = $conn->prepare("
-                INSERT INTO productos (
-                    vendedor_id, categoria_id, nombre, descripcion, 
-                    precio, precio_oferta, stock, condicion, activo
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ");
+            // Depuración: Registrar los datos que se intentan guardar
+            error_log("Intentando guardar producto con los siguientes datos:");
+            error_log("Nombre: " . $nombre);
+            error_log("Precio: " . $precio);
+            error_log("Categoría ID: " . $categoria_id);
+            error_log("Stock: " . $stock);
+            error_log("Peso (g): " . $peso_gramos);
+            error_log("Dimensiones (LxAxH): " . $largo_mm . "x" . $ancho_mm . "x" . $alto_mm);
+            error_log("Marca: " . $marca);
+            error_log("Modelo: " . $modelo);
+            error_log("SKU: " . $sku);
+            error_log("Condición: " . $condicion);
             
-            $stmt->execute([
-                $user_id, 
-                $categoria_id, 
-                $nombre, 
-                $descripcion, 
-                $precio, 
-                $precio_oferta, 
-                $stock, 
-                $condicion, 
-                $activo
-            ]);
+            // Insertar el producto
+            try {
+                $sql = "
+                    INSERT INTO productos (
+                        vendedor_id, nombre, descripcion, precio, categoria_id, 
+                        stock, peso_gramos, largo_mm, ancho_mm, alto_mm, 
+                        activo, marca, modelo, sku, condicion, fecha_creacion
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
+                ";
+                
+                error_log("Consulta SQL a ejecutar: " . $sql);
+                
+                $stmt = $conn->prepare($sql);
+                
+                $params = [
+                    $user_id, 
+                    $nombre, 
+                    $descripcion, 
+                    $precio, 
+                    $categoria_id, 
+                    $stock,
+                    $peso_gramos,
+                    $largo_mm,
+                    $ancho_mm,
+                    $alto_mm,
+                    $activo,
+                    $marca,
+                    $modelo,
+                    $sku,
+                    $condicion
+                ];
+                
+                error_log("Parámetros: " . print_r($params, true));
+                
+                $result = $stmt->execute($params);
+                
+                if (!$result) {
+                    $errorInfo = $stmt->errorInfo();
+                    error_log("Error al ejecutar la consulta: " . print_r($errorInfo, true));
+                    throw new PDOException("Error al ejecutar la consulta: " . ($errorInfo[2] ?? "Error desconocido"));
+                }
+                
+            } catch (PDOException $e) {
+                error_log("Error en la consulta SQL: " . $e->getMessage());
+                error_log("Código de error: " . $e->getCode());
+                error_log("Archivo: " . $e->getFile() . " en la línea " . $e->getLine());
+                error_log("Consulta: " . ($sql ?? "No se pudo obtener la consulta"));
+                error_log("Parámetros: " . print_r($params ?? [], true));
+                throw $e;
+            }
             
             $producto_id = $conn->lastInsertId();
             
             // Guardar las imágenes
             if (!empty($imagenes)) {
                 $stmt = $conn->prepare("
-                    INSERT INTO imagenes_producto (producto_id, imagen_url, orden) 
-                    VALUES (?, ?, ?)
-                
+                    INSERT INTO imagenes_producto (producto_id, imagen_url) 
+                    VALUES (?, ?)
                 ");
                 
-                foreach ($imagenes as $orden => $imagen) {
+                foreach ($imagenes as $imagen) {
                     $stmt->execute([
                         $producto_id,
-                        str_replace('../', '', $imagen['ruta']), // Guardar ruta relativa
-                        $orden
+                        $imagen
                     ]);
                 }
             }
             
             $conn->commit();
             
-            $_SESSION['success'] = '¡Producto creado exitosamente!';
-            header('Location: editar-producto.php?id=' . $producto_id);
+            // Verificar que el producto se haya creado correctamente
+            $verificar = $conn->query("SELECT * FROM productos WHERE id = " . $producto_id);
+            $producto_creado = $verificar->fetch(PDO::FETCH_ASSOC);
+            
+            if ($producto_creado) {
+                $_SESSION['success'] = '¡Producto creado exitosamente!';
+                // Redirigir a la lista de productos del vendedor
+                header('Location: productos.php');
+                exit();
+            } else {
+                throw new Exception('El producto no se pudo crear correctamente.');
+            }
             exit();
             
         } catch (PDOException $e) {
             $conn->rollBack();
-            error_log("Error al crear producto: " . $e->getMessage());
-            $errores[] = 'Error al guardar el producto. Por favor, inténtalo de nuevo.';
+            $error_message = "Error al crear producto: " . $e->getMessage();
+            error_log($error_message);
+            error_log("Error en el archivo: " . $e->getFile() . " en la línea " . $e->getLine());
+            error_log("Código de error: " . $e->getCode());
+            error_log("Trace: " . $e->getTraceAsString());
+            
+            // Mensaje de error más detallado para el usuario
+            $errores[] = 'Error al guardar el producto. Por favor, verifica los datos e inténtalo de nuevo.';
+            $errores[] = 'Detalles del error: ' . $e->getMessage();
         }
     }
 }
@@ -251,23 +471,56 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
         .dropzone {
             border: 2px dashed #ccc;
-            border-radius: 4px;
-            padding: 20px;
+            border-radius: 5px;
+            padding: 25px;
             text-align: center;
-            margin-bottom: 20px;
             cursor: pointer;
+            transition: all 0.3s;
         }
-        .dropzone:hover {
-            border-color: #999;
+        .dropzone:hover, .dropzone.dragover {
+            border-color: #0d6efd;
+            background-color: #f8f9fa;
         }
         .dropzone i {
-            font-size: 48px;
+            font-size: 2.5rem;
             color: #6c757d;
             margin-bottom: 10px;
         }
-        .dropzone p {
-            margin: 0;
-            color: #6c757d;
+        .preview-container {
+            margin-top: 15px;
+        }
+        .preview-item {
+            position: relative;
+            display: inline-block;
+            margin: 5px;
+            width: 100px;
+            height: 100px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            overflow: hidden;
+        }
+        .preview-item img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+        .preview-item .remove-image {
+            position: absolute;
+            top: 2px;
+            right: 2px;
+            background: rgba(0,0,0,0.5);
+            color: white;
+            border: none;
+            border-radius: 50%;
+            width: 20px;
+            height: 20px;
+            line-height: 18px;
+            text-align: center;
+            cursor: pointer;
+            padding: 0;
+        }
+        .preview-item .remove-image:hover {
+            background: #dc3545;
         }
     </style>
 </head>
@@ -276,8 +529,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         <?php include '../includes/header.php'; ?>
         
         <div class="dashboard-content">
-            <?php include 'includes/sidebar.php'; ?>
-            
             <div class="dashboard-main">
                 <div class="dashboard-header">
                     <h1>Nuevo Producto</h1>
@@ -299,7 +550,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     </div>
                 <?php endif; ?>
                 
-                <form action="nuevo-producto.php" method="POST" enctype="multipart/form-data" id="productoForm">
+                <form action="/Silco/vendedor/nuevo-producto.php" method="POST" enctype="multipart/form-data" id="productoForm">
                     <input type="hidden" name="csrf_token" value="<?php echo generateCSRFToken(); ?>">
                     
                     <div class="card mb-4">
@@ -317,6 +568,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                     </div>
                                     
                                     <div class="mb-3">
+                                        <label for="precio" class="form-label">Precio *</label>
+                                        <div class="input-group">
+                                            <span class="input-group-text">$</span>
+                                            <input type="number" step="0.01" min="0.01" class="form-control" id="precio" name="precio" required
+                                                   value="<?php echo htmlspecialchars($_POST['precio'] ?? ''); ?>">
+                                        </div>
+                                        <div class="form-text">Precio de venta del producto.</div>
+                                    </div>
+                                    
+                                    <div class="mb-3">
                                         <label for="descripcion" class="form-label">Descripción *</label>
                                         <textarea class="form-control" id="descripcion" name="descripcion" rows="5" required><?php 
                                             echo htmlspecialchars($_POST['descripcion'] ?? ''); 
@@ -330,12 +591,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                         <label for="categoria_id" class="form-label">Categoría *</label>
                                         <select class="form-select" id="categoria_id" name="categoria_id" required>
                                             <option value="">Selecciona una categoría</option>
-                                            <?php foreach ($categorias as $categoria): ?>
-                                                <option value="<?php echo $categoria['id']; ?>"
-                                                    <?php echo (isset($_POST['categoria_id']) && $_POST['categoria_id'] == $categoria['id']) ? 'selected' : ''; ?>>
-                                                    <?php echo htmlspecialchars($categoria['nombre']); ?>
-                                                </option>
-                                            <?php endforeach; ?>
+                                            <?php 
+                                            if (!empty($categorias)): 
+                                                foreach ($categorias as $categoria): 
+                                                    if (!empty(trim($categoria['nombre']))): // Solo mostrar si el nombre no está vacío
+                                            ?>
+                                                        <option value="<?php echo $categoria['id']; ?>"
+                                                            <?php echo (isset($_POST['categoria_id']) && $_POST['categoria_id'] == $categoria['id']) ? 'selected' : ''; ?>>
+                                                            <?php echo htmlspecialchars(trim($categoria['nombre'])); ?>
+                                                        </option>
+                                            <?php 
+                                                    endif;
+                                                endforeach; 
+                                            else: 
+                                            ?>
+                                                <option value="" disabled>No hay categorías disponibles</option>
+                                            <?php endif; ?>
                                         </select>
                                     </div>
                                     
@@ -344,16 +615,31 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                         <select class="form-select" id="condicion" name="condicion" required>
                                             <option value="nuevo" <?php echo (isset($_POST['condicion']) && $_POST['condicion'] === 'nuevo') ? 'selected' : ''; ?>>Nuevo</option>
                                             <option value="usado" <?php echo (isset($_POST['condicion']) && $_POST['condicion'] === 'usado') ? 'selected' : ''; ?>>Usado</option>
-                                            <option value="reacondicionado" <?php echo (isset($_POST['condicion']) && $_POST['condicion'] === 'reacondicionado') ? 'selected' : ''; ?>>Reacondicionado</option>
                                         </select>
                                     </div>
                                     
-                                    <div class="form-check form-switch mb-3">
-                                        <input class="form-check-input" type="checkbox" id="activo" name="activo" value="1" 
-                                               <?php echo !isset($_POST['activo']) || $_POST['activo'] ? 'checked' : ''; ?>>
-                                        <label class="form-check-label" for="activo">Producto activo</label>
-                                        <div class="form-text">Los productos inactivos no serán visibles en la tienda.</div>
+                                    <div class="mb-3">
+                                        <label for="marca" class="form-label">Marca</label>
+                                        <input type="text" class="form-control" id="marca" name="marca" 
+                                               value="<?php echo htmlspecialchars($_POST['marca'] ?? ''); ?>">
+                                        <div class="form-text">Ejemplo: Sony, Nike, Samsung, etc.</div>
                                     </div>
+                                    
+                                    <div class="mb-3">
+                                        <label for="modelo" class="form-label">Modelo</label>
+                                        <input type="text" class="form-control" id="modelo" name="modelo" 
+                                               value="<?php echo htmlspecialchars($_POST['modelo'] ?? ''); ?>">
+                                        <div class="form-text">Número o nombre específico del modelo.</div>
+                                    </div>
+                                    
+                                    <div class="mb-3">
+                                        <label for="sku" class="form-label">SKU</label>
+                                        <input type="text" class="form-control" id="sku" name="sku" 
+                                               value="<?php echo htmlspecialchars($_POST['sku'] ?? ''); ?>">
+                                        <div class="form-text">Código único de identificación del producto.</div>
+                                    </div>
+                                    
+                                    <input type="hidden" name="activo" value="1">
                                 </div>
                             </div>
                         </div>
@@ -371,7 +657,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                     <p>Arrastra y suelta las imágenes aquí o haz clic para seleccionar</p>
                                     <p class="small">Puedes subir hasta 10 imágenes. Formatos: JPG, PNG, GIF, WEBP. Tamaño máximo: 5MB por imagen.</p>
                                 </div>
-                                <input type="file" id="imagenes" name="imagenes[]" multiple accept="image/*" style="display: none;">
+                                <input type="file" id="imagenes" name="imagenes[]" multiple accept="image/jpeg,image/png,image/gif,image/webp" style="display: none;" required>
                                 
                                 <div id="imagePreview" class="preview-container">
                                     <!-- Las imágenes seleccionadas se mostrarán aquí -->
@@ -383,53 +669,67 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     
                     <div class="card mb-4">
                         <div class="card-header">
-                            <h3>Precio y Stock</h3>
+                            <h3>Stock</h3>
                         </div>
                         <div class="card-body">
                             <div class="row">
-                                <div class="col-md-6">
-                                    <div class="mb-3">
-                                        <label for="precio" class="form-label">Precio *</label>
-                                        <div class="input-group">
-                                            <span class="input-group-text">$</span>
-                                            <input type="number" class="form-control" id="precio" name="precio" 
-                                                   step="0.01" min="0" required
-                                                   value="<?php echo htmlspecialchars($_POST['precio'] ?? '0'); ?>">
-                                        </div>
-                                    </div>
-                                </div>
-                                
-                                <div class="col-md-6">
-                                    <div class="mb-3">
-                                        <label for="precio_oferta" class="form-label">Precio de oferta (opcional)</label>
-                                        <div class="input-group">
-                                            <span class="input-group-text">$</span>
-                                            <input type="number" class="form-control" id="precio_oferta" 
-                                                   name="precio_oferta" step="0.01" min="0"
-                                                   value="<?php echo htmlspecialchars($_POST['precio_oferta'] ?? ''); ?>">
-                                        </div>
-                                        <div class="form-text">Si se especifica, este será el precio mostrado como oferta.</div>
-                                    </div>
-                                </div>
-                                
-                                <div class="col-md-6">
+                                <div class="col-md-4">
                                     <div class="mb-3">
                                         <label for="stock" class="form-label">Cantidad en Stock *</label>
-                                        <input type="number" class="form-control" id="stock" name="stock" 
-                                               min="0" required
-                                               value="<?php echo htmlspecialchars($_POST['stock'] ?? '0'); ?>">
+                                        <input type="number" class="form-control" id="stock" name="stock" required
+                                               min="0" value="<?php echo htmlspecialchars($_POST['stock'] ?? '0'); ?>">
+                                    </div>
+                                </div>
+                                
+                                <div class="col-md-4">
+                                    <div class="mb-3">
+                                        <label for="peso_gramos" class="form-label">Peso (gramos) *</label>
+                                        <div class="input-group">
+                                            <input type="number" min="1" class="form-control" id="peso_gramos" name="peso_gramos" required
+                                                   value="<?php echo htmlspecialchars($_POST['peso_gramos'] ?? '1000'); ?>">
+                                            <span class="input-group-text">g</span>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <div class="col-md-4">
+                                    <div class="mb-3">
+                                        <label class="form-label">Dimensiones (mm) *</label>
+                                        <div class="row g-2">
+                                            <div class="col-4">
+                                                <div class="input-group">
+                                                    <span class="input-group-text">L</span>
+                                                    <input type="number" min="1" class="form-control" id="largo_mm" name="largo_mm" required
+                                                           value="<?php echo htmlspecialchars($_POST['largo_mm'] ?? '100'); ?>">
+                                                </div>
+                                            </div>
+                                            <div class="col-4">
+                                                <div class="input-group">
+                                                    <span class="input-group-text">A</span>
+                                                    <input type="number" min="1" class="form-control" id="ancho_mm" name="ancho_mm" required
+                                                           value="<?php echo htmlspecialchars($_POST['ancho_mm'] ?? '100'); ?>">
+                                                </div>
+                                            </div>
+                                            <div class="col-4">
+                                                <div class="input-group">
+                                                    <span class="input-group-text">H</span>
+                                                    <input type="number" min="1" class="form-control" id="alto_mm" name="alto_mm" required
+                                                           value="<?php echo htmlspecialchars($_POST['alto_mm'] ?? '100'); ?>">
+                                                </div>
+                                            </div>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
                         </div>
                     </div>
                     
-                    <div class="d-flex justify-content-between">
-                        <a href="productos.php" class="btn btn-outline-secondary">
-                            <i class="fas fa-times"></i> Cancelar
+                    <div class="d-grid gap-2 d-md-flex justify-content-md-end">
+                        <a href="productos.php" class="btn btn-outline-secondary me-md-2">
+                            <i class="fas fa-arrow-left"></i> Cancelar
                         </a>
                         <button type="submit" class="btn btn-primary">
-                            <i class="fas fa-save"></i> Guardar Producto
+                            <i class="fas fa-save me-1"></i> Guardar Producto
                         </button>
                     </div>
                 </form>
@@ -447,58 +747,147 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             let imageFiles = [];
             const maxFiles = 10;
             
+            // Función para actualizar el orden de las imágenes
+            function updateImageOrder() {
+                const items = document.querySelectorAll('.preview-item');
+                const order = [];
+                
+                items.forEach((item, index) => {
+                    const filename = item.getAttribute('data-filename');
+                    if (filename) {
+                        order.push(filename);
+                        // Actualizar número de orden
+                        const orderBadge = item.querySelector('.image-order');
+                        if (orderBadge) {
+                            orderBadge.textContent = index + 1;
+                        }
+                    }
+                });
+                
+                // Actualizar el campo oculto con el orden de las imágenes
+                document.getElementById('imagenes_orden').value = order.join(',');
+            }
+            
             // Inicializar Sortable para el contenedor de previsualización
             const previewContainer = document.getElementById('imagePreview');
-            const sortable = new Sortable(previewContainer, {
-                animation: 150,
-                onEnd: updateImageOrder
-            });
+            if (previewContainer) {
+                const sortable = new Sortable(previewContainer, {
+                    animation: 150,
+                    onEnd: updateImageOrder
+                });
+            }
             
-            // Manejar clic en el área de carga
-            $('#imageDropzone').on('click', function() {
-                $('#imagenes').click();
+            // Configurar el dropzone
+            $('#imageDropzone').on({
+                'dragover dragenter': function(e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    $(this).addClass('bg-light');
+                },
+                'dragleave drop': function(e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    $(this).removeClass('bg-light');
+                },
+                'drop': function(e) {
+                    const dt = e.originalEvent.dataTransfer;
+                    const files = dt.files;
+                    handleFiles(files);
+                },
+                'click': function(e) {
+                    e.preventDefault();
+                    $('#imagenes').click();
+                }
             });
-            
+
             // Manejar cambio en el input de archivo
             $('#imagenes').on('change', function(e) {
-                handleFiles(e.target.files);
-                $(this).val(''); // Resetear el input para permitir cargar la misma imagen otra vez
+                if (this.files && this.files.length > 0) {
+                    handleFiles(this.files);
+                }
             });
             
-            // Manejar arrastrar y soltar
-            const dropzone = document.getElementById('imageDropzone');
+            // Función para manejar archivos seleccionados
+            function handleFiles(files) {
+                if (!files || files.length === 0) return;
+                
+                // Verificar límite de archivos
+                const availableSlots = maxFiles - imageFiles.length;
+                if (files.length > availableSlots) {
+                    alert(`Solo puedes subir ${availableSlots} imágenes más. El límite es de ${maxFiles} imágenes.`);
+                    return;
+                }
+                
+                // Convertir FileList a Array
+                const fileArray = Array.from(files);
+                
+                // Procesar cada archivo
+                Array.from(files).forEach(file => {
+                    // Verificar si es una imagen
+                    if (!file.type.match('image.*')) {
+                        alert(`El archivo ${file.name} no es una imagen válida.`);
+                        return;
+                    }
+                    
+                    // Verificar tamaño (5MB)
+                    if (file.size > 5 * 1024 * 1024) {
+                        alert(`El archivo ${file.name} es demasiado grande. Tamaño máximo: 5MB`);
+                        return;
+                    }
+                    
+                    // Agregar a la lista de archivos
+                    imageFiles.push(file);
+                    
+                    // Mostrar previsualización
+                    const reader = new FileReader();
+                    reader.onload = function(e) {
+                        const previewItem = document.createElement('div');
+                        previewItem.className = 'preview-item';
+                        previewItem.setAttribute('data-filename', file.name);
+                        
+                        previewItem.innerHTML = `
+                            <img src="${e.target.result}" alt="Vista previa">
+                            <button type="button" class="remove-image">&times;</button>
+                            <div class="sort-handle"><i class="fas fa-arrows-alt"></i></div>
+                            <div class="image-order">${imageFiles.length}</div>
+                        `;
+                        
+                        // Agregar manejador de eventos para el botón de eliminar
+                        previewItem.querySelector('.remove-image').addEventListener('click', function(e) {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            removeImage(file.name);
+                        });
+                        
+                        document.getElementById('imagePreview').appendChild(previewItem);
+                        updateFileInput();
+                        updateImageOrder();
+                    };
+                    
+                    reader.readAsDataURL(file);
+                });
+            }
             
-            ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
-                dropzone.addEventListener(eventName, preventDefaults, false);
-            });
+            // Función para eliminar una imagen de la vista previa
+            function removeImage(filename) {
+                // Eliminar de la lista de archivos
+                imageFiles = imageFiles.filter(file => file.name !== filename);
+                
+                // Eliminar la previsualización
+                const previewItem = document.querySelector(`.preview-item[data-filename="${filename}"]`);
+                if (previewItem) {
+                    previewItem.remove();
+                }
+                
+                // Actualizar el input de archivo
+                updateFileInput();
+                updateImageOrder();
+            }
             
+            // Función auxiliar para prevenir comportamientos por defecto
             function preventDefaults(e) {
                 e.preventDefault();
                 e.stopPropagation();
-            }
-            
-            ['dragenter', 'dragover'].forEach(eventName => {
-                dropzone.addEventListener(eventName, highlight, false);
-            });
-            
-            ['dragleave', 'drop'].forEach(eventName => {
-                dropzone.addEventListener(eventName, unhighlight, false);
-            });
-            
-            function highlight() {
-                dropzone.classList.add('bg-light');
-            }
-            
-            function unhighlight() {
-                dropzone.classList.remove('bg-light');
-            }
-            
-            dropzone.addEventListener('drop', handleDrop, false);
-            
-            function handleDrop(e) {
-                const dt = e.dataTransfer;
-                const files = dt.files;
-                handleFiles(files);
             }
             
             // Procesar archivos seleccionados
@@ -594,22 +983,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             // Actualizar el input de archivo para el formulario
             function updateFileInput() {
                 const dataTransfer = new DataTransfer();
+                const order = [];
+                
+                // Agregar archivos al DataTransfer
                 imageFiles.forEach(file => {
                     dataTransfer.items.add(file);
                 });
                 
+                // Actualizar el input de archivo
                 const fileInput = document.getElementById('imagenes');
                 fileInput.files = dataTransfer.files;
-            }
-            
-            // Actualizar el orden de las imágenes
-            function updateImageOrder() {
-                const previewItems = document.querySelectorAll('.preview-item');
-                const order = [];
                 
+                // Actualizar el orden de las imágenes
+                const previewItems = document.querySelectorAll('.preview-item');
                 previewItems.forEach((item, index) => {
                     const filename = item.getAttribute('data-filename');
-                    order.push(filename);
+                    if (filename) {
+                        order.push(filename);
+                    }
                     
                     // Actualizar número de orden
                     const orderBadge = item.querySelector('.image-order');
@@ -618,7 +1009,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     }
                 });
                 
+                // Actualizar el campo oculto con el orden de las imágenes
                 document.getElementById('imagenes_orden').value = order.join(',');
+                
+                // Actualizar el contador de archivos
+                const fileCount = imageFiles.length;
+                const dropzoneText = $('.dropzone p:first');
+                if (fileCount > 0) {
+                    dropzoneText.text(`${fileCount} archivo(s) seleccionado(s)`);
+                } else {
+                    dropzoneText.text('Arrastra y suelta las imágenes aquí o haz clic para seleccionar');
+                }
             }
             
             // Validar formulario antes de enviar
@@ -629,15 +1030,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     return false;
                 }
                 
-                // Validar que el precio de oferta sea menor que el precio normal
-                const precio = parseFloat($('#precio').val());
-                const precioOferta = $('#precio_oferta').val() ? parseFloat($('#precio_oferta').val()) : null;
-                
-                if (precioOferta !== null && precioOferta >= precio) {
-                    e.preventDefault();
-                    alert('El precio de oferta debe ser menor al precio normal.');
-                    return false;
-                }
                 
                 return true;
             });

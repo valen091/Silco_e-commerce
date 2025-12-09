@@ -1,49 +1,53 @@
 # Enable the rewrite engine
 <IfModule mod_rewrite.c>
     RewriteEngine On
-    
-    # Set the base directory
     RewriteBase /Silco/
     
-    # Security Headers
-    <IfModule mod_headers.c>
-        Header always set X-Content-Type-Options "nosniff"
-        Header always set X-Frame-Options "SAMEORIGIN"
-        Header always set X-XSS-Protection "1; mode=block"
-        Header always set Referrer-Policy "strict-origin-when-cross-origin"
-        
-        # Add CORS headers for API endpoints
-        <FilesMatch "\.(php)$">
-            Header set Access-Control-Allow-Origin "*"
-            Header set Access-Control-Allow-Methods "GET, POST, OPTIONS"
-            Header set Access-Control-Allow-Headers "Content-Type, Authorization, X-Requested-With"
-        </FilesMatch>
-    </IfModule>
+    # Allow direct access to backend API endpoints
+    RewriteRule ^backend/ - [L]
     
-    # Allow direct access to existing files and directories
+    # Allow direct access to files and directories that exist
     RewriteCond %{REQUEST_FILENAME} -f [OR]
-    RewriteCond %{REQUEST_FILENAME} -d [OR]
-    RewriteCond %{REQUEST_URI} ^/(assets|backend)/
+    RewriteCond %{REQUEST_FILENAME} -d
     RewriteRule ^ - [L]
     
-    # Handle Front Controller
-    RewriteRule ^(.*)$ index.php?url=$1 [QSA,L]
+    # Redirect missing product images to placeholder
+    RewriteRule ^uploads/productos/.*\.(jpg|jpeg|png|gif|webp)$ assets/img/placeholder.php [L]
     
-    # Handle Authorization Header
-    RewriteCond %{HTTP:Authorization} .
-    RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
+    # Handle front controller pattern for all other requests
+    RewriteRule ^(.*)$ router.php [QSA,L]
+</IfModule>
+
+# Session settings
+<IfModule mod_php7.c>
+    php_flag session.auto_start 0
+    php_flag session.use_only_cookies 1
+    php_flag session.cookie_httponly 1
+    php_flag session.cookie_secure 0
+    php_flag session.use_strict_mode 1
+    php_value session.cookie_samesite "Lax"
+</IfModule>
+
+# Security Headers
+<IfModule mod_headers.c>
+    Header set X-Content-Type-Options "nosniff"
+    Header set X-Frame-Options "SAMEORIGIN"
+    Header set X-XSS-Protection "1; mode=block"
 </IfModule>
 
 # Disable directory listing
-Options -Indexes -MultiViews +FollowSymLinks
+Options -Indexes
+
+# Set default charset
+AddDefaultCharset UTF-8
+
+# Set the default handler
+DirectoryIndex index.php index.html
 
 # Prevent access to sensitive files
-<FilesMatch "^\.|composer\.json|composer\.lock|package\.json|package-lock\.json|webpack\.config\.js|gulpfile\.js|readme\.md|CHANGELOG\.md\.gitignore|.env">
-    Order allow,deny
-    Deny from all
+<FilesMatch "^\.|composer\.(json|lock)|package(-lock)?\.json|webpack\.config\.js|gulpfile\.js|readme\.md|CHANGELOG\.md|\.gitignore|\.env">
+    Require all denied
 </FilesMatch>
-
-# Enable compression
 <IfModule mod_deflate.c>
     AddOutputFilterByType DEFLATE text/plain
     AddOutputFilterByType DEFLATE text/html

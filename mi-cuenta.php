@@ -1,14 +1,20 @@
 <?php
-require_once __DIR__ . '/includes/header.php';
+// Iniciar sesión al principio del script
+require_once __DIR__ . '/config.php';
+configureSession();
 
-// Check if user is logged in
+// Verificar si el usuario está autenticado
 if (!isset($_SESSION['user_id'])) {
     header('Location: login.php');
     exit();
 }
 
-$db = new Database();
-$conn = $db->connect();
+// Incluir header después de verificar la sesión
+require_once __DIR__ . '/includes/functions.php';
+require_once __DIR__ . '/includes/header.php';
+
+$db = Database::getInstance();
+$conn = $db->getConnection();
 $user_id = $_SESSION['user_id'];
 $success_message = '';
 $error_message = '';
@@ -100,18 +106,15 @@ try {
                         <a href="mi-cuenta" class="list-group-item list-group-item-action active">
                             <i class="bi bi-person me-2"></i> Mi Perfil
                         </a>
-                        <a href="mis-pedidos" class="list-group-item list-group-item-action">
+                        <a class="nav-link text-warning" href="<?= BASE_URL ?>/mis-pedidos.php">
                             <i class="bi bi-box-seam me-2"></i> Mis Pedidos
                         </a>
-                        <a href="favoritos" class="list-group-item list-group-item-action">
+                        <a class="nav-link text-warning" href="<?= BASE_URL ?>/favoritos.php">
                             <i class="bi bi-heart me-2"></i> Favoritos
                         </a>
-                        <a href="direcciones" class="list-group-item list-group-item-action">
-                            <i class="bi bi-geo-alt me-2"></i> Direcciones
-                        </a>
                         <?php if (isset($_SESSION['es_vendedor']) && $_SESSION['es_vendedor']): ?>
-                        <a href="panel-vendedor" class="list-group-item list-group-item-action">
-                            <i class="bi bi-shop me-2"></i> Panel del Vendedor
+                        <a class="nav-link text-warning" href="<?= BASE_URL ?>/vendedor/panel.php">
+                            <i class="bi bi-shop"></i> Panel Vendedor
                         </a>
                         <?php endif; ?>
                         <a href="logout.php" class="list-group-item list-group-item-action text-danger">

@@ -7,14 +7,14 @@ class Vendedor {
     private $table = 'perfiles_vendedor';
 
     public function __construct() {
-        $this->db = new Database();
+        $this->db = Database::getInstance();
     }
 
     /**
      * Get seller profile by user ID
      */
     public function obtenerPerfil($usuario_id) {
-        $conn = $this->db->connect();
+        $conn = $this->db->getConnection();
         $query = "SELECT pv.*, u.nombre, u.apellido, u.email, u.telefono, u.direccion, u.ciudad, u.codigo_postal, u.pais 
                  FROM {$this->table} pv
                  JOIN usuarios u ON pv.usuario_id = u.id
@@ -37,7 +37,7 @@ class Vendedor {
      * Get seller profile by store name
      */
     public function obtenerPerfilPorTienda($nombre_tienda) {
-        $conn = $this->db->connect();
+        $conn = $this->db->getConnection();
         $query = "SELECT pv.*, u.nombre, u.apellido, u.email 
                  FROM {$this->table} pv
                  JOIN usuarios u ON pv.usuario_id = u.id
@@ -1046,73 +1046,4 @@ class Vendedor {
         return $stmt->fetchAll(PDO::FETCH_ASSOC);
     }
 
-    /**
-     * Get seller statistics
-     */
-    public function obtenerEstadisticas($vendedor_id) {
-        $conn = $this->db->connect();
-        
-        $stats = [];
-        
-        // Total products
-        $stmt = $conn->prepare("SELECT COUNT(*) FROM productos WHERE vendedor_id = ?");
-        $stmt->execute([$vendedor_id]);
-        $stats['total_productos'] = $stmt->fetchColumn();
-        
-        // Total orders
-        $stmt = $conn->prepare("
-            SELECT COUNT(DISTINCT p.id) 
-            FROM pedidos p
-            JOIN items_pedido ip ON p.id = ip.pedido_id
-            JOIN productos pr ON ip.producto_id = pr.id 
-            WHERE pr.vendedor_id = ?");
-        
-        $stmt->execute([$vendedor_id]);
-        $stats['total_pedidos'] = $stmt->fetchColumn();
-        
-        // Total sales
-        $stmt = $conn->prepare("
-            SELECT COALESCE(SUM(ip.cantidad * ip.precio_unitario), 0)
-            FROM items_pedido ip
-            JOIN productos p ON ip.producto_id = p.id
-            JOIN pedidos ped ON ip.pedido_id = ped.id
-            WHERE p.vendedor_id = ? AND ped.estado != 'cancelado'");
-        
-        $stmt->execute([$vendedor_id]);
-        $stats['ventas_totales'] = $stmt->fetchColumn();
-        
-        // Low stock products
-        $stmt = $conn->prepare("
-            SELECT COUNT(*) 
-            FROM productos 
-            WHERE vendedor_id = ? AND stock > 0 AND stock <= umbral_stock");
-        
-        $stmt->execute([$vendedor_id]);
-        $stats['productos_bajo_stock'] = $stmt->fetchColumn();
-        
-        // Out of stock products
-        $stmt = $conn->prepare("SELECT COUNT(*) FROM productos WHERE vendedor_id = ? AND stock = 0");
-        $stmt->execute([$vendedor_id]);
-        $stats['productos_agotados'] = $stmt->fetchColumn();
-        
-        // Recent orders
-        $stmt = $conn->prepare("
-            SELECT p.id, p.estado, p.fecha_creacion, 
-                   CONCAT(u.nombre, ' ', u.apellido) as nombre_cliente,
-                   (SELECT COUNT(*) FROM items_pedido WHERE pedido_id = p.id) as total_items,
-                   (SELECT SUM(cantidad * precio_unitario) FROM items_pedido WHERE pedido_id = p.id) as total
-            FROM pedidos p
-            JOIN items_pedido ip ON p.id = ip.pedido_id
-            JOIN productos pr ON ip.producto_id = pr.id
-            JOIN usuarios u ON p.usuario_id = u.id
-            WHERE pr.vendedor_id = ?
-            GROUP BY p.id
-            ORDER BY p.fecha_creacion DESC
-            LIMIT 5");
-        
-        $stmt->execute([$vendedor_id]);
-        $stats['ultimos_pedidos'] = $stmt->fetchAll(PDO::FETCH_ASSOC);
-        
-        return $stats;
-    }
 }

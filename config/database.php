@@ -1,5 +1,5 @@
 <?php
-class Database {
+class DatabaseConfig {
     private $host;
     private $db_name;
     private $username;
@@ -17,20 +17,40 @@ class Database {
     }
 
     private function loadEnv() {
-        if (!getenv('DB_HOST')) {
-            $lines = file(__DIR__ . '/../.env', FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
-            foreach ($lines as $line) {
-                if (strpos(trim($line), '#') === 0) {
-                    continue;
+        // Default values
+        $defaults = [
+            'DB_HOST' => 'localhost',
+            'DB_DATABASE' => 'silco_db',
+            'DB_USER' => 'root',
+            'DB_PASSWORD' => '',
+            'DB_PORT' => '3306'
+        ];
+
+        // Try to load from .env file if it exists
+        $envFile = __DIR__ . '/../.env';
+        if (file_exists($envFile)) {
+            $lines = file($envFile, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+            if ($lines !== false) {
+                foreach ($lines as $line) {
+                    if (strpos(trim($line), '#') === 0) {
+                        continue;
+                    }
+                    if (strpos($line, '=') !== false) {
+                        list($name, $value) = explode('=', $line, 2);
+                        $name = trim($name);
+                        $value = trim($value);
+                        $defaults[$name] = $value;
+                    }
                 }
-                list($name, $value) = explode('=', $line, 2);
-                $name = trim($name);
-                $value = trim($value);
-                if (!array_key_exists($name, $_ENV)) {
-                    putenv(sprintf('%s=%s', $name, $value));
-                    $_ENV[$name] = $value;
-                    $_SERVER[$name] = $value;
-                }
+            }
+        }
+
+        // Set environment variables
+        foreach ($defaults as $key => $value) {
+            if (!getenv($key)) {
+                putenv("$key=$value");
+                $_ENV[$key] = $value;
+                $_SERVER[$key] = $value;
             }
         }
     }
